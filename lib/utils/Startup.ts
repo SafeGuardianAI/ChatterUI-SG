@@ -3,7 +3,12 @@ import { useAppModeState } from '@lib/state/AppMode'
 import { Instructs } from '@lib/state/Instructs'
 import { SamplersManager } from '@lib/state/SamplerState'
 import { useTTSState } from '@lib/state/TTS'
-import { getCpuFeatures } from 'cui-llama.rn'
+import {
+    convertJsonSchemaToGrammar,
+    getCpuFeatures,
+    SchemaGrammarConverter,
+} from 'cui-llama.rn'
+
 import { DeviceType, getDeviceTypeAsync } from 'expo-device'
 import {
     deleteAsync,
