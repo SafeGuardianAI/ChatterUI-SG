@@ -2,10 +2,11 @@ import ThemedButton from '@components/buttons/ThemedButton'
 import PopupMenu from '@components/views/PopupMenu'
 import { MaterialIcons } from '@expo/vector-icons'
 import { AppSettings } from '@lib/constants/GlobalValues'
-import { generateResponse } from '@lib/engine/Inference'
+import { generateResponse, generateResponseWithDualGeneration } from '@lib/engine/Inference'
 import { Characters } from '@lib/state/Characters'
 import { Chats, useInference } from '@lib/state/Chat'
 import { Logger } from '@lib/state/Logger'
+import { SamplersManager } from '@lib/state/SamplerState'
 import { Theme } from '@lib/theme/ThemeManager'
 import { getDocumentAsync } from 'expo-document-picker'
 import { Image } from 'expo-image'
@@ -89,7 +90,19 @@ const ChatInput = () => {
         const swipeId = await addEntry(charName ?? '', false, '')
         setNewMessage('')
         setAttachments([])
-        if (swipeId) generateResponse(swipeId)
+        
+        if (swipeId) {
+            // Check if grammar is enabled for dual-generation
+            const currentSampler = SamplersManager.getCurrentSampler()
+            const hasGrammar = currentSampler.grammar_string && String(currentSampler.grammar_string).trim().length > 0
+            
+            if (hasGrammar) {
+                Logger.info('Grammar constraints detected, using dual-generation')
+                generateResponseWithDualGeneration(swipeId)
+            } else {
+                generateResponse(swipeId)
+            }
+        }
     }
 
     return (

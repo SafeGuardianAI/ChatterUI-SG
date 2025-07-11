@@ -6,7 +6,13 @@ import { Instructs } from '@lib/state/Instructs'
 import { SamplersManager } from '@lib/state/SamplerState'
 import { useTTSState } from '@lib/state/TTS'
 import { getThreads } from '@vali98/react-native-cpu-info'
-import { getCpuFeatures } from 'cui-llama.rn'
+
+import {
+    convertJsonSchemaToGrammar,
+    getCpuFeatures,
+    SchemaGrammarConverter,
+} from 'cui-llama.rn'
+
 import { DeviceType, getDeviceTypeAsync } from 'expo-device'
 import {
     deleteAsync,

@@ -336,5 +336,107 @@ export namespace DefaultColorSchemes {
         shadow: '#000000',
     }
 
-    export const schemes = [lavenderDark, lavenderLight, amoled, navyDark, hotPink, retroGreen]
+    export const emergencyDark: ThemeColor = {
+      version: 1,
+      name: "Emergency Dark",
+      primary: { // Primary reds can often stay vibrant or be slightly desaturated
+        _100: "#B71C1C", // Darker base for the lightest shade
+        _200: "#C62828",
+        _300: "#D32F2F",
+        _400: "#E57373", // Mid-tones can be similar
+        _500: "#F44336", // Main primary can often remain the same
+        _600: "#EF9A9A", // Lighter for "on dark" emphasis if needed
+        _700: "#FFCDD2",
+        _800: "#FFEBEE",
+        _900: "#FFFFFF"  // Brightest for strong highlights on dark
+      },
+      neutral: { // Inverted for dark mode: light becomes dark, dark becomes light
+        _100: "#121212", // Very dark background (common dark mode base)
+        _200: "#1E1E1E", // Slightly lighter surface
+        _300: "#2C2C2C",
+        _400: "#3A3A3A",
+        _500: "#525252", // Mid-gray for dividers or secondary elements
+        _600: "#8A8A8A", // Lighter gray for less emphasis text or icons
+        _700: "#A0A0A0",
+        _800: "#C1C1C1",
+        _900: "#E0E0E0"  // Very light gray for high emphasis text on dark
+      },
+      error: { // Error colors often remain similar for strong visual cue
+        _100: "#B71C1C",
+        _200: "#C62828",
+        _300: "#D32F2F",
+        _400: "#E57373",
+        _500: "#F44336", // Main error color
+        _600: "#EF9A9A",
+        _700: "#FFCDD2",
+        _800: "#FFEBEE",
+        _900: "#FFFFFF"
+      },
+      text: { // Inverted for readability on dark backgrounds
+        _100: "#FFFFFF",       // Primary text: pure white or very light gray
+        _200: "#F5F5F5",       // Slightly less emphasis
+        _300: "#E0E0E0",
+        _400: "#BDBDBD",       // Secondary text
+        _500: "#9E9E9E",       // Disabled or hint text
+        _600: "#757575",
+        _700: "#616161",
+        _800: "#424242",
+        _900: "#212121"        // Very dark (rarely used directly on main dark BG)
+      },
+      quote: "#E57373", // A lighter shade of the primary red to stand out on dark
+      shadow: "rgba(255, 255, 255, 0.1)" // Shadows on dark mode are often lighter and more subtle, or a very dark opaque color if you want depth. Using a semi-transparent white can work.
+    };
+
+    export const emergencyLight: ThemeColor = {
+                                           "version": 1,
+                                           "name": "Emergency Light",
+                                           "primary": {
+                                             "_100": "#FFEBEE",
+                                             "_200": "#FFCDD2",
+                                             "_300": "#EF9A9A",
+                                             "_400": "#E57373",
+                                             "_500": "#F44336",
+                                             "_600": "#D32F2F",
+                                             "_700": "#C62828",
+                                             "_800": "#B71C1C",
+                                             "_900": "#880E4F"
+                                           },
+                                           "neutral": {
+                                             "_100": "#FFFFFF",
+                                             "_200": "#F5F5F5",
+                                             "_300": "#EEEEEE",
+                                             "_400": "#E0E0E0",
+                                             "_500": "#BDBDBD",
+                                             "_600": "#9E9E9E",
+                                             "_700": "#757575",
+                                             "_800": "#616161",
+                                             "_900": "#424242"
+                                           },
+                                           "error": {
+                                             "_100": "#FFEBEE",
+                                             "_200": "#FFCDD2",
+                                             "_300": "#EF9A9A",
+                                             "_400": "#E57373",
+                                             "_500": "#F44336",
+                                             "_600": "#D32F2F",
+                                             "_700": "#C62828",
+                                             "_800": "#B71C1C",
+                                             "_900": "#880E4F"
+                                           },
+                                           "text": {
+                                             "_100": "#212121",
+                                             "_200": "#424242",
+                                             "_300": "#616161",
+                                             "_400": "#757575",
+                                             "_500": "#9E9E9E",
+                                             "_600": "#BDBDBD",
+                                             "_700": "#E0E0E0",
+                                             "_800": "#F5F5F5",
+                                             "_900": "#FFFFFF"
+                                           },
+                                           "quote": "#F44336",
+                                           "shadow": "#000000"
+                                         }
+
+    export const schemes = [lavenderDark, lavenderLight, amoled, navyDark, hotPink, retroGreen, emergencyLight, emergencyDark]
 }

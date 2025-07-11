@@ -27,8 +27,8 @@ export namespace Theme {
             (set, get) => ({
                 color:
                     Appearance.getColorScheme() === 'dark'
-                        ? DefaultColorSchemes.lavenderDark
-                        : DefaultColorSchemes.lavenderLight,
+                        ? DefaultColorSchemes.emergencyDark
+                        : DefaultColorSchemes.emergencyLight,
                 setColor: (color) => {
                     set((state) => ({ ...state, color: color }))
                 },

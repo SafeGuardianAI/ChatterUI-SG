@@ -15,6 +15,7 @@ import { APIConfiguration, APIValues } from './API/APIBuilder.types'
 import { APIState } from './API/APIManagerState'
 import { localInference } from './LocalInference'
 import { Tokenizer } from './Tokenizer'
+import { Llama } from './Local/LlamaLocal'
 
 export const regenerateResponse = async (swipeId: number, regenCache: boolean = true) => {
     const charName = Characters.useCharacterCard.getState().card?.name
@@ -46,6 +47,221 @@ export const continueResponse = async (swipeId: number) => {
     Chats.useChatState.getState().setRegenCache()
     Chats.useChatState.getState().insertLastToBuffer()
     await generateResponse(swipeId)
+}
+
+// Add new dual-generation function
+export const generateResponseWithDualGeneration = async (swipeId: number) => {
+    if (useInference.getState().nowGenerating) {
+        Logger.infoToast('Generation already in progress')
+        return
+    }
+    
+    Chats.useChatState.getState().startGenerating(swipeId)
+    Logger.info(`Starting dual-generation: unconstrained + grammar-guided`)
+    
+    const appMode = useAppModeState.getState().appMode
+    
+    // Check if grammar is enabled
+    const currentSampler = SamplersManager.getCurrentSampler()
+    const hasGrammar = currentSampler.grammar_string && String(currentSampler.grammar_string).trim().length > 0
+    
+    if (!hasGrammar) {
+        Logger.info('No grammar constraints found, falling back to standard generation')
+        return await generateResponse(swipeId)
+    }
+    
+    Logger.info('Grammar constraints detected, starting dual-generation process')
+    
+    if (appMode === 'local') {
+        await BackgroundService.start(() => localDualInference(swipeId), completionTaskOptions)
+    } else {
+        await BackgroundService.start(() => remoteDualInference(swipeId), completionTaskOptions)
+    }
+}
+
+// Local dual inference implementation
+const localDualInference = async (swipeId: number) => {
+    try {
+        Logger.info('Starting local dual-generation')
+        
+        // Store original grammar
+        const originalSampler = SamplersManager.getCurrentSampler()
+        const originalGrammar = originalSampler.grammar_string
+        
+        // Phase 1: Generate without grammar
+        Logger.info('Phase 1: Generating without grammar constraints')
+        SamplersManager.useSamplerState.getState().updateCurrentConfig({
+            ...SamplersManager.useSamplerState.getState().configList[SamplersManager.useSamplerState.getState().currentConfigIndex],
+            data: {
+                ...originalSampler,
+                grammar_string: ''
+            }
+        })
+        
+        const phase1Result = await runSingleLocalGeneration()
+        
+        // Phase 2: Generate with grammar (for comparison/guidance)
+        Logger.info('Phase 2: Generating with grammar constraints')
+        SamplersManager.useSamplerState.getState().updateCurrentConfig({
+            ...SamplersManager.useSamplerState.getState().configList[SamplersManager.useSamplerState.getState().currentConfigIndex],
+            data: {
+                ...originalSampler,
+                grammar_string: originalGrammar
+            }
+        })
+        
+        const phase2Result = await runSingleLocalGeneration()
+        
+        // Restore original grammar
+        SamplersManager.useSamplerState.getState().updateCurrentConfig({
+            ...SamplersManager.useSamplerState.getState().configList[SamplersManager.useSamplerState.getState().currentConfigIndex],
+            data: originalSampler
+        })
+        
+        // Save only Phase 1 (unconstrained) result to conversation
+        Logger.info('Saving unconstrained generation to conversation')
+        Logger.info(`Grammar-guided generation (reference): ${phase2Result.substring(0, 100)}...`)
+        
+        const regenCache = Chats.useChatState.getState().getRegenCache()
+        Chats.useChatState.getState().setBuffer({ 
+            data: regenCache + phase1Result, 
+            timings: undefined 
+        })
+        
+        useInference.getState().stopGenerating()
+        
+    } catch (error) {
+        Logger.errorToast(`Dual generation failed: ${error}`)
+        useInference.getState().stopGenerating()
+    }
+}
+
+// Remote dual inference implementation
+const remoteDualInference = async (swipeId: number) => {
+    try {
+        Logger.info('Starting remote dual-generation')
+        
+        // Store original grammar
+        const originalSampler = SamplersManager.getCurrentSampler()
+        const originalGrammar = originalSampler.grammar_string
+        
+        // Phase 1: Generate without grammar
+        Logger.info('Phase 1: Generating without grammar constraints')
+        SamplersManager.useSamplerState.getState().updateCurrentConfig({
+            ...SamplersManager.useSamplerState.getState().configList[SamplersManager.useSamplerState.getState().currentConfigIndex],
+            data: {
+                ...originalSampler,
+                grammar_string: ''
+            }
+        })
+        
+        const phase1Result = await runSingleRemoteGeneration()
+        
+        // Phase 2: Generate with grammar
+        Logger.info('Phase 2: Generating with grammar constraints')
+        SamplersManager.useSamplerState.getState().updateCurrentConfig({
+            ...SamplersManager.useSamplerState.getState().configList[SamplersManager.useSamplerState.getState().currentConfigIndex],
+            data: {
+                ...originalSampler,
+                grammar_string: originalGrammar
+            }
+        })
+        
+        const phase2Result = await runSingleRemoteGeneration()
+        
+        // Restore original grammar
+        SamplersManager.useSamplerState.getState().updateCurrentConfig({
+            ...SamplersManager.useSamplerState.getState().configList[SamplersManager.useSamplerState.getState().currentConfigIndex],
+            data: originalSampler
+        })
+        
+        // Save only Phase 1 (unconstrained) result
+        Logger.info('Saving unconstrained generation to conversation')
+        Logger.info(`Grammar-guided generation (reference): ${phase2Result.substring(0, 100)}...`)
+        
+        const regenCache = Chats.useChatState.getState().getRegenCache()
+        Chats.useChatState.getState().setBuffer({ 
+            data: regenCache + phase1Result, 
+            timings: undefined 
+        })
+        
+        useInference.getState().stopGenerating()
+        
+    } catch (error) {
+        Logger.errorToast(`Remote dual generation failed: ${error}`)
+        useInference.getState().stopGenerating()
+    }
+}
+
+// Helper function for single local generation
+const runSingleLocalGeneration = async (): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        let generatedText = ''
+        let originalBuffer = ''
+        
+        // Store original buffer state
+        const chatState = Chats.useChatState.getState()
+        originalBuffer = chatState.buffer?.data || ''
+        
+        // Clear buffer for this generation
+        chatState.setBuffer({ data: '' })
+        
+        // Override buffer insertion to capture text
+        const originalInsertBuffer = chatState.insertBuffer
+        chatState.insertBuffer = (text: string) => {
+            generatedText += text
+        }
+        
+        // Override setBuffer to capture final result
+        const originalSetBuffer = chatState.setBuffer
+        chatState.setBuffer = (buffer: any) => {
+            generatedText = buffer.data
+            resolve(generatedText)
+            
+            // Restore original functions
+            chatState.insertBuffer = originalInsertBuffer
+            chatState.setBuffer = originalSetBuffer
+        }
+        
+        // Run local inference
+        localInference().catch((error) => {
+            // Restore original functions on error
+            chatState.insertBuffer = originalInsertBuffer
+            chatState.setBuffer = originalSetBuffer
+            reject(error)
+        })
+    })
+}
+
+// Helper function for single remote generation
+const runSingleRemoteGeneration = async (): Promise<string> => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const fields = await obtainFields()
+            if (!fields) {
+                reject('Failed to obtain fields')
+                return
+            }
+
+            let generatedText = ''
+            
+            fields.onData = (text) => {
+                generatedText += text
+            }
+            
+            fields.onEnd = () => {
+                resolve(generatedText)
+            }
+            
+            fields.stopGenerating = () => {
+                reject('Generation stopped')
+            }
+
+            await buildAndSendRequest(fields)
+        } catch (error) {
+            reject(error)
+        }
+    })
 }
 
 const completionTaskOptions = {

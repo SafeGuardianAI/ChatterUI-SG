@@ -8,14 +8,17 @@ import ChatInput from '@screens/ChatMenu/ChatInput'
 import AvatarViewer from '@screens/ChatMenu/ChatWindow/AvatarViewer'
 import ChatWindow from '@screens/ChatMenu/ChatWindow/ChatWindow'
 import ChatsDrawer from '@screens/ChatMenu/ChatsDrawer'
+import GrammarToggle from '@screens/ChatMenu/GrammarToggle'
+import OptionsMenu from '@screens/ChatMenu/OptionsMenu'
 import SettingsDrawer from '@screens/SettingsDrawer'
 import { useEffect } from 'react'
-import { View } from 'react-native'
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
+import { View, KeyboardAvoidingView, Platform } from 'react-native'
+import { Theme } from '@lib/theme/ThemeManager'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useShallow } from 'zustand/react/shallow'
 
 const ChatMenu = () => {
+    const { spacing } = Theme.useTheme()
     const insets = useSafeAreaInsets()
     const { unloadCharacter, charId } = Characters.useCharacterCard(
         useShallow((state) => ({
@@ -27,7 +30,7 @@ const ChatMenu = () => {
     const { chat, unloadChat, loadChat } = Chats.useChat()
 
     const { showSettings, showChats } = Drawer.useDrawerState(
-        useShallow((state) => ({
+        useShallow((state) => ({    
             showSettings: state.values?.[Drawer.ID.SETTINGS],
             showChats: state.values?.[Drawer.ID.CHATLIST],
         }))
@@ -71,7 +74,7 @@ const ChatMenu = () => {
             <View style={{ flex: 1 }}>
                 <KeyboardAvoidingView
                     keyboardVerticalOffset={getOffset()}
-                    behavior="translate-with-padding"
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                     style={{ flex: 1, paddingBottom: insets.bottom }}>
                     <HeaderTitle />
                     <HeaderButton
@@ -114,6 +117,20 @@ const ChatMenu = () => {
                     }}>
                     <SettingsDrawer />
                     <ChatsDrawer />
+                    {chat && <ChatWindow />}
+                    <View
+                        style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            marginVertical: spacing.m,
+                            paddingHorizontal: spacing.l,
+                        }}>
+                        <AvatarViewer />
+                        <GrammarToggle />
+                        <OptionsMenu />
+                        <ChatInput />
+                    </View>
                 </View>
             </View>
         </Drawer.Gesture>
