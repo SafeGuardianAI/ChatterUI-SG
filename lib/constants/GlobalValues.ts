@@ -107,6 +107,7 @@ export const enum Global {
     // AppMode = 'appmode', // moved to zustand state
 
     CpuFeatures = 'cpufeatures',
+    CPUThreads = 'constants-cpu-threads',
 }
 
 export enum AppSettings {
@@ -134,6 +135,10 @@ export enum AppSettings {
     UseModelTemplate = 'useModelTemplate',
     ShowTokenPerSecond = 'showtokenpersecond',
     AutoLoadUser = 'autoloaduser',
+    QuickDelete = 'settings-quickdelete',
+    UseTagHider = 'settings-usetaghider',
+    SaveScrollPosition = 'settings-savescrollposition',
+    AutoGenerateTitle = 'settings-auto-generate-title',
 }
 
 /**
@@ -164,6 +169,10 @@ export const AppSettingsDefault: Record<AppSettings, boolean> = {
     [AppSettings.UseModelTemplate]: true,
     [AppSettings.ShowTokenPerSecond]: true,
     [AppSettings.AutoLoadUser]: true,
+    [AppSettings.QuickDelete]: false,
+    [AppSettings.UseTagHider]: true,
+    [AppSettings.SaveScrollPosition]: false,
+    [AppSettings.AutoGenerateTitle]: true,
 }
 
 export const CLAUDE_VERSION = '2023-06-01'

@@ -3,11 +3,16 @@ import Alert from '@components/views/Alert'
 import HeaderButton from '@components/views/HeaderButton'
 import HeaderTitle from '@components/views/HeaderTitle'
 import PopupMenu from '@components/views/PopupMenu'
+import TextBoxModal from '@components/views/TextBoxModal'
+import { Logger } from '@lib/state/Logger'
 import { DefaultColorSchemes, ThemeColor } from '@lib/theme/ThemeColor'
 import { Theme } from '@lib/theme/ThemeManager'
 import { pickJSONDocument } from '@lib/utils/File'
-import React from 'react'
-import { Text, TouchableOpacity, View, FlatList } from 'react-native'
+import { setBackgroundColorAsync } from 'expo-system-ui'
+import React, { useState } from 'react'
+import { Text, TouchableOpacity, View, FlatList, Linking } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { useShallow } from 'zustand/react/shallow'
 
 type ColorThemeItemProps = {
     item: ThemeColor
@@ -16,20 +21,19 @@ type ColorThemeItemProps = {
 }
 
 const ColorThemeItem: React.FC<ColorThemeItemProps> = ({ item, index, showDelete = false }) => {
-    const { color, setColor, customColors, addCustomColor, removeColorScheme, length } =
-        Theme.useColorState((state) => ({
+    const { color, setColor, customColors, removeColorScheme } = Theme.useColorState(
+        useShallow((state) => ({
             color: state.color,
             setColor: state.setColor,
             customColors: state.customColors,
-            addCustomColor: state.addCustomColor,
             removeColorScheme: state.removeColorScheme,
-            length: state.customColors.length,
         }))
+    )
 
     const handleRemoveColorScheme = (index: number) => {
         Alert.alert({
             title: 'Delete Theme',
-            description: `Are you sure you want to delete ${customColors[0].name}? This cannot be undone!`,
+            description: `Are you sure you want to delete ${customColors[0]?.name}? This cannot be undone!`,
             buttons: [
                 { label: 'Cancel' },
                 {
@@ -51,7 +55,10 @@ const ColorThemeItem: React.FC<ColorThemeItemProps> = ({ item, index, showDelete
                 alignItems: 'center',
             }}>
             <TouchableOpacity
-                onPress={() => setColor(item)}
+                onPress={() => {
+                    setColor(item)
+                    setBackgroundColorAsync(item.neutral._100)
+                }}
                 style={{
                     borderColor: item.text._100,
                     borderWidth: 1,
@@ -122,14 +129,17 @@ const ColorThemeItem: React.FC<ColorThemeItemProps> = ({ item, index, showDelete
 }
 
 const ColorSelector = () => {
-    const { color, customColors, addCustomColor } = Theme.useColorState((state) => ({
-        color: state.color,
-        customColors: state.customColors,
-        addCustomColor: state.addCustomColor,
-    }))
+    const { customColors, addCustomColor } = Theme.useColorState(
+        useShallow((state) => ({
+            customColors: state.customColors,
+            addCustomColor: state.addCustomColor,
+        }))
+    )
+
+    const [showPaste, setShowPaste] = useState(false)
 
     return (
-        <View style={{ padding: 16, rowGap: 16 }}>
+        <SafeAreaView edges={['bottom']} style={{ padding: 16, rowGap: 16 }}>
             <HeaderTitle title="Themes" />
             <HeaderButton
                 headerRight={() => (
@@ -148,9 +158,41 @@ const ColorSelector = () => {
                                     m?.current?.close()
                                 },
                             },
+                            {
+                                label: 'Paste Theme',
+                                icon: 'file1',
+                                onPress: (m) => {
+                                    m.current?.close()
+                                    setShowPaste(true)
+                                },
+                            },
+                            {
+                                label: 'Get Themes',
+                                icon: 'github',
+                                onPress: (m) => {
+                                    m.current?.close()
+                                    Linking.openURL(
+                                        'https://github.com/Vali-98/ChatterUI/discussions/218'
+                                    )
+                                },
+                            },
                         ]}
                     />
                 )}
+            />
+            <TextBoxModal
+                booleans={[showPaste, setShowPaste]}
+                onConfirm={(e) => {
+                    try {
+                        const data = JSON.parse(e)
+                        addCustomColor(data)
+                    } catch (e) {
+                        Logger.errorToast('Failed to import: ' + e)
+                    }
+                }}
+                multiline
+                showPaste
+                title="Paste Theme Here"
             />
             <FlatList
                 contentContainerStyle={{ rowGap: 8 }}
@@ -164,7 +206,7 @@ const ColorSelector = () => {
                     />
                 )}
             />
-        </View>
+        </SafeAreaView>
     )
 }
 

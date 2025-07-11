@@ -5,6 +5,7 @@ import { APIManagerValue, APIState } from '@lib/engine/API/APIManagerState'
 import { Theme } from '@lib/theme/ThemeManager'
 import { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
+import { useShallow } from 'zustand/react/shallow'
 
 import EditAPIModal from './EditAPIModal'
 
@@ -17,10 +18,12 @@ const APIValueItem: React.FC<APIValueItemProps> = ({ item, index }) => {
     const { spacing } = Theme.useTheme()
     const styles = useStyles()
     const [showEditor, setShowEditor] = useState(false)
-    const { removeValue, editValue } = APIState.useAPIState((state) => ({
-        removeValue: state.removeValue,
-        editValue: state.editValue,
-    }))
+    const { removeValue, editValue } = APIState.useAPIState(
+        useShallow((state) => ({
+            removeValue: state.removeValue,
+            editValue: state.editValue,
+        }))
+    )
 
     const handleDelete = () => {
         Alert.alert({

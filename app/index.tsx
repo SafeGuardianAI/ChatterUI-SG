@@ -2,6 +2,7 @@ import HeaderTitle from '@components/views/HeaderTitle'
 import { db } from '@db'
 import { AntDesign } from '@expo/vector-icons'
 import useLocalAuth from '@lib/hooks/LocalAuth'
+import { useNotificationObserver } from '@lib/notifications/Notifications'
 import { Theme } from '@lib/theme/ThemeManager'
 import { loadChatOnInit, startupApp } from '@lib/utils/Startup'
 import CharacterMenu from '@screens/CharacterMenu'
@@ -19,6 +20,8 @@ const Home = () => {
     const { authorized, retry } = useLocalAuth()
 
     const [firstRender, setFirstRender] = useState<boolean>(true)
+
+    useNotificationObserver()
 
     useEffect(() => {
         if (authorized && success) {

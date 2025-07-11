@@ -1,9 +1,8 @@
 import Alert from '@components/views/Alert'
 import { AppSettings } from '@lib/constants/GlobalValues'
 import { SamplerConfigData, SamplerID, Samplers } from '@lib/constants/SamplerData'
-import { Characters } from '@lib/state/Characters'
 import { Chats, useInference } from '@lib/state/Chat'
-import { Instructs, InstructType } from '@lib/state/Instructs'
+import { Instructs } from '@lib/state/Instructs'
 import { Logger } from '@lib/state/Logger'
 import { SamplersManager } from '@lib/state/SamplerState'
 import { useTTSState } from '@lib/state/TTS'
@@ -57,18 +56,31 @@ const getSamplerFields = (max_length?: number) => {
         })
         .reduce((acc, obj) => Object.assign(acc, obj), {})
 }
-
+// TODO: Use new builders
 const buildLocalPayload = async () => {
     const payloadFields = getSamplerFields()
     const rep_pen = payloadFields?.['penalty_repeat']
     const n_predict =
         (typeof payloadFields?.['n_predict'] === 'number' && payloadFields?.['n_predict']) || 0
     const localPreset: LlamaConfig = Llama.useEngineData.getState().config
-
     let prompt: undefined | string = undefined
+    let mediaPaths: string[] = []
+    const inferConfig = { ...localAPIConfig }
+    const context = Llama.useLlama.getState().context
+    const completionType = inferConfig.request.completionType
+    if (context && (await context.isMultimodalEnabled())) {
+        const mtmdSupport = await context.getMultimodalSupport()
+        if (completionType.type === 'chatCompletions') {
+            completionType.supportsAudio = mtmdSupport?.audio
+            completionType.supportsImages = mtmdSupport?.vision
+            inferConfig.request.completionType = completionType
+        }
+    }
+    const hasAudio = completionType.type === 'chatCompletions' && completionType.supportsAudio
+    const hasImage = completionType.type === 'chatCompletions' && completionType.supportsImages
 
     if (mmkv.getBoolean(AppSettings.UseModelTemplate)) {
-        const messages = buildChatCompletionContext(
+        const messages = await buildChatCompletionContext(
             localPreset.context_length - n_predict,
             localAPIConfig,
             localAPIValues
@@ -80,20 +92,27 @@ const buildLocalPayload = async () => {
                     .context?.getFormattedChat(messages, null, { jinja: true })
                 if (typeof result === 'string') prompt = result
                 // Currently not used since we dont pass in { jinja: true }
-                else if (typeof result === 'object') prompt = result.prompt
+                else if (typeof result === 'object') {
+                    prompt = result.prompt
+                    mediaPaths = result.media_paths ?? []
+                    if (mediaPaths.length > 0 && !hasImage && !hasAudio) {
+                        Logger.warnToast('Media was added without multimodal support.')
+                    }
+                }
             }
         } catch (e) {
             Logger.error(`Failed to use template: ${e}`)
         }
     }
     if (!prompt) {
-        prompt = buildTextCompletionContext(localPreset.context_length - n_predict)
+        prompt = await buildTextCompletionContext(localPreset.context_length - n_predict)
     }
 
     if (!prompt) {
         Logger.errorToast('Failed to build prompt')
     }
 
+    const finalMediaPaths = hasAudio || hasImage ? { media_paths: mediaPaths } : {}
     return {
         ...payloadFields,
         penalize_nl: typeof rep_pen === 'number' && rep_pen > 1,
@@ -101,35 +120,27 @@ const buildLocalPayload = async () => {
         prompt: prompt ?? '',
         stop: constructStopSequence(),
         emit_partial_completion: true,
+        ...finalMediaPaths,
     }
 }
 
 const constructStopSequence = (): string[] => {
-    const instruct = Instructs.useInstruct.getState().replacedMacros()
-    const sequence: string[] = []
-    if (instruct.stop_sequence !== '')
-        instruct.stop_sequence.split(',').forEach((item) => item !== '' && sequence.push(item))
-    return sequence
+    // kept this helper for extendability
+    return Instructs.useInstruct.getState().getStopSequence()
 }
 
 const stopGenerating = () => {
+    // kept this helper for extendability
     Chats.useChatState.getState().stopGenerating()
 }
 
 const constructReplaceStrings = (): string[] => {
-    const currentInstruct: InstructType = Instructs.useInstruct.getState().replacedMacros()
     // default stop strings defined instructs
     const stops: string[] = constructStopSequence()
     // additional stop strings based on context configuration
-    const output: string[] = []
-
-    if (currentInstruct.names) {
-        const userName = Characters.useCharacterCard.getState().card?.name ?? ''
-        const charName: string = Characters.useCharacterCard.getState()?.card?.name ?? ''
-        output.push(`${userName} :`)
-        output.push(`${charName} :`)
-    }
-    return [...stops, ...output]
+    //    const output: string[] = []
+    //  return [...stops, ...output]
+    return stops
 }
 
 const verifyModelLoaded = async (): Promise<boolean> => {
@@ -153,69 +164,80 @@ const verifyModelLoaded = async (): Promise<boolean> => {
 
         // attempt to load model
         if (lastModel) {
-            Logger.infoToast(`Auto-loading: ${lastModel.name}`)
+            Logger.infoToast(`Auto-loading Model: ${lastModel.name}`)
             await Llama.useLlama.getState().load(lastModel)
+        }
+
+        const lastMmproj = Llama.useEngineData.getState().lastMmproj
+        if (lastMmproj) {
+            Logger.infoToast(`Auto-loading MMPROJ: ${lastMmproj.name}`)
+            await Llama.useLlama.getState().loadMmproj(lastMmproj)
         }
     }
     return true
 }
 
 export const localInference = async () => {
-    // Model Loading Routine
-    if (!(await verifyModelLoaded())) {
-        return stopGenerating()
-    }
+    try {
+        // Model Loading Routine
+        if (!(await verifyModelLoaded())) {
+            return stopGenerating()
+        }
 
-    // verify that model has been loaded
-    const context = Llama.useLlama.getState().context
+        // verify that model has been loaded
+        const context = Llama.useLlama.getState().context
 
-    if (!context) {
-        Logger.warnToast('No Model Loaded')
-        stopGenerating()
-        return
-    }
-
-    const payload = await buildLocalPayload()
-
-    if (!payload) {
-        Logger.warnToast('Failed to build payload')
-        stopGenerating()
-        return
-    }
-
-    if (mmkv.getBoolean(AppSettings.SaveLocalKV) && !KV.useKVState.getState().kvCacheLoaded) {
-        const prompt = Llama.useLlama.getState().tokenize(payload.prompt)
-        const result = KV.useKVState.getState().verifyKVCache(prompt?.tokens ?? [])
-        if (!result.match) {
-            Alert.alert({
-                title: 'Cache Mismatch',
-                description: `KV Cache does not match current prompt:\n\n${result.matchLength} of ${result.cachedLength} tokens are identical.\n\nPress 'Load Anyway' if you don't mind losing the cache.`,
-                buttons: [
-                    { label: 'Cancel', onPress: stopGenerating },
-                    {
-                        label: 'Load Anyway',
-                        onPress: async () => {
-                            Logger.warn('Overriding KV Cache despite mismatch')
-                            const result = await Llama.useLlama.getState().loadKV()
-                            if (result) {
-                                KV.useKVState.getState().setKvCacheLoaded(true)
-                            }
-                            runLocalCompletion(payload)
-                        },
-                        type: 'warning',
-                    },
-                ],
-                onDismiss: stopGenerating,
-            })
+        if (!context) {
+            Logger.warnToast('No Model Loaded')
+            stopGenerating()
             return
         }
 
-        const kvloadResult = await Llama.useLlama.getState().loadKV()
-        if (kvloadResult) {
-            KV.useKVState.getState().setKvCacheLoaded(true)
+        const payload = await buildLocalPayload()
+
+        if (!payload) {
+            Logger.warnToast('Failed to build payload')
+            stopGenerating()
+            return
         }
+
+        if (mmkv.getBoolean(AppSettings.SaveLocalKV) && !KV.useKVState.getState().kvCacheLoaded) {
+            const prompt = Llama.useLlama.getState().tokenize(payload.prompt, payload.media_paths)
+            const result = KV.useKVState.getState().verifyKVCache(prompt?.tokens ?? [])
+            if (!result.match) {
+                Alert.alert({
+                    title: 'Cache Mismatch',
+                    description: `KV Cache does not match current prompt:\n\n${result.matchLength} of ${result.cachedLength} tokens are identical.\n\nPress 'Load Anyway' if you don't mind losing the cache.`,
+                    buttons: [
+                        { label: 'Cancel', onPress: stopGenerating },
+                        {
+                            label: 'Load Anyway',
+                            onPress: async () => {
+                                Logger.warn('Overriding KV Cache despite mismatch')
+                                const result = await Llama.useLlama.getState().loadKV()
+                                if (result) {
+                                    KV.useKVState.getState().setKvCacheLoaded(true)
+                                }
+                                runLocalCompletion(payload)
+                            },
+                            type: 'warning',
+                        },
+                    ],
+                    onDismiss: stopGenerating,
+                })
+                return
+            }
+
+            const kvloadResult = await Llama.useLlama.getState().loadKV()
+            if (kvloadResult) {
+                KV.useKVState.getState().setKvCacheLoaded(true)
+            }
+        }
+        await runLocalCompletion(payload)
+    } catch (e) {
+        Logger.errorToast('Failed to run local inference: ' + e)
+        stopGenerating()
     }
-    await runLocalCompletion(payload)
 }
 
 const runLocalCompletion = async (payload: Awaited<ReturnType<typeof buildLocalPayload>>) => {

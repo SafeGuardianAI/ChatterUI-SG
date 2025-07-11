@@ -3,7 +3,7 @@ import ThemedSlider from '@components/input/ThemedSlider'
 import ThemedSwitch from '@components/input/ThemedSwitch'
 import SectionTitle from '@components/text/SectionTitle'
 import Alert from '@components/views/Alert'
-import { AppSettings } from '@lib/constants/GlobalValues'
+import { AppSettings, Global } from '@lib/constants/GlobalValues'
 import { Llama } from '@lib/engine/Local/LlamaLocal'
 import { KV } from '@lib/engine/Local/Model'
 import { Logger } from '@lib/state/Logger'
@@ -11,8 +11,9 @@ import { readableFileSize } from '@lib/utils/File'
 import { useFocusEffect } from 'expo-router'
 import React, { useEffect, useState } from 'react'
 import { BackHandler, Platform, View } from 'react-native'
-import { useMMKVBoolean } from 'react-native-mmkv'
+import { useMMKVBoolean, useMMKVNumber } from 'react-native-mmkv'
 import Animated, { Easing, SlideInRight, SlideOutRight } from 'react-native-reanimated'
+import { useShallow } from 'zustand/react/shallow'
 
 type ModelSettingsProp = {
     modelImporting: boolean
@@ -21,14 +22,17 @@ type ModelSettingsProp = {
 }
 
 const ModelSettings: React.FC<ModelSettingsProp> = ({ modelImporting, modelLoading, exit }) => {
-    const { config, setConfig } = Llama.useEngineData((state) => ({
-        config: state.config,
-        setConfig: state.setConfiguration,
-    }))
+    const { config, setConfig } = Llama.useEngineData(
+        useShallow((state) => ({
+            config: state.config,
+            setConfig: state.setConfiguration,
+        }))
+    )
 
     const [saveKV, setSaveKV] = useMMKVBoolean(AppSettings.SaveLocalKV)
     const [autoloadLocal, setAutoloadLocal] = useMMKVBoolean(AppSettings.AutoLoadLocal)
     const [showModelInChat, setShowModelInChat] = useMMKVBoolean(AppSettings.ShowModelInChat)
+    const [threadCount, _] = useMMKVNumber(Global.CPUThreads)
 
     const [kvSize, setKVSize] = useState(0)
 
@@ -79,7 +83,7 @@ const ModelSettings: React.FC<ModelSettingsProp> = ({ modelImporting, modelLoadi
             <SectionTitle>CPU Settings</SectionTitle>
             <View style={{ marginTop: 16 }} />
             {config && (
-                <View>
+                <>
                     <ThemedSlider
                         label="Max Context"
                         value={config.context_length}
@@ -94,7 +98,7 @@ const ModelSettings: React.FC<ModelSettingsProp> = ({ modelImporting, modelLoadi
                         value={config.threads}
                         onValueChange={(value) => setConfig({ ...config, threads: value })}
                         min={1}
-                        max={8}
+                        max={threadCount ?? 8}
                         step={1}
                         disabled={modelImporting || modelLoading}
                     />
@@ -108,6 +112,7 @@ const ModelSettings: React.FC<ModelSettingsProp> = ({ modelImporting, modelLoadi
                         step={16}
                         disabled={modelImporting || modelLoading}
                     />
+
                     {/* Note: llama.rn does not have any Android gpu acceleration */}
                     {Platform.OS === 'ios' && (
                         <ThemedSlider
@@ -119,7 +124,15 @@ const ModelSettings: React.FC<ModelSettingsProp> = ({ modelImporting, modelLoadi
                             step={1}
                         />
                     )}
-                </View>
+
+                    <ThemedSwitch
+                        label="Context Shift"
+                        value={config.ctx_shift}
+                        onChangeValue={(value) => {
+                            setConfig({ ...config, ctx_shift: value })
+                        }}
+                    />
+                </>
             )}
             <SectionTitle>Advanced Settings</SectionTitle>
             <ThemedSwitch
@@ -155,4 +168,3 @@ const ModelSettings: React.FC<ModelSettingsProp> = ({ modelImporting, modelLoadi
 }
 
 export default ModelSettings
-

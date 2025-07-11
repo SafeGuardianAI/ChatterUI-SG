@@ -2,9 +2,12 @@ import { AppSettings } from '@lib/constants/GlobalValues'
 import { useAppMode } from '@lib/state/AppMode'
 import { Chats } from '@lib/state/Chat'
 import { Theme } from '@lib/theme/ThemeManager'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import { useMMKVBoolean } from 'react-native-mmkv'
+import { useShallow } from 'zustand/react/shallow'
 
+import ChatActions, { optionState } from './ChatActions'
+import ChatAttachments from './ChatAttachments'
 import ChatText from './ChatText'
 import ChatTextLast from './ChatTextLast'
 import { useChatEditorState } from './EditorModal'
@@ -20,8 +23,16 @@ type ChatTextProps = {
 const ChatBody: React.FC<ChatTextProps> = ({ index, nowGenerating, isLastMessage, isGreeting }) => {
     const message = Chats.useEntryData(index)
     const { appMode } = useAppMode()
-    const [showTPS, __] = useMMKVBoolean(AppSettings.ShowTokenPerSecond)
+    const [showTPS, _] = useMMKVBoolean(AppSettings.ShowTokenPerSecond)
     const { color, spacing, borderRadius, fontSize } = Theme.useTheme()
+
+    const { activeIndex, setShowOptions } = optionState(
+        useShallow((state) => ({
+            setShowOptions: state.setActiveIndex,
+            activeIndex: state.activeIndex,
+        }))
+    )
+
     const showEditor = useChatEditorState((state) => state.show)
     const handleEnableEdit = () => {
         if (!nowGenerating) showEditor(index)
@@ -30,9 +41,13 @@ const ChatBody: React.FC<ChatTextProps> = ({ index, nowGenerating, isLastMessage
     const hasSwipes = message?.swipes?.length > 1
     const showSwipe = !message.is_user && isLastMessage && (hasSwipes || !isGreeting)
     const timings = message.swipes[message.swipe_id].timings
+
     return (
         <View>
-            <TouchableOpacity
+            <Pressable
+                onPress={() => {
+                    setShowOptions(activeIndex === index || nowGenerating ? undefined : index)
+                }}
                 style={{
                     backgroundColor: color.neutral._200,
                     borderColor: color.neutral._200,
@@ -42,28 +57,48 @@ const ChatBody: React.FC<ChatTextProps> = ({ index, nowGenerating, isLastMessage
                     minHeight: 40,
                     borderRadius: borderRadius.m,
                     shadowColor: color.shadow,
-                    elevation: 2,
+                    boxShadow: [
+                        {
+                            offsetX: 1,
+                            offsetY: 1,
+                            spreadDistance: 2,
+                            color: color.shadow,
+                            blurRadius: 4,
+                        },
+                    ],
                 }}
-                activeOpacity={0.7}
                 onLongPress={handleEnableEdit}>
                 {isLastMessage ? (
                     <ChatTextLast nowGenerating={nowGenerating} index={index} />
                 ) : (
                     <ChatText nowGenerating={nowGenerating} index={index} />
                 )}
-                {showTPS && appMode === 'local' && timings && (
-                    <Text
-                        style={{
-                            color: color.text._500,
-                            fontWeight: '300',
-                            textAlign: 'right',
-                            fontSize: fontSize.s,
-                        }}>
-                        {`Prompt: ${getFiniteValue(timings.prompt_per_second)} t/s`}
-                        {`   Text Gen: ${getFiniteValue(timings.predicted_per_second)} t/s`}
-                    </Text>
-                )}
-            </TouchableOpacity>
+                <ChatAttachments index={index} />
+                <View
+                    style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                    }}>
+                    {showTPS && appMode === 'local' && timings && (
+                        <Text
+                            style={{
+                                color: color.text._500,
+                                fontWeight: '300',
+                                textAlign: 'right',
+                                fontSize: fontSize.s,
+                            }}>
+                            {`Prompt: ${getFiniteValue(timings.prompt_per_second)} t/s`}
+                            {`   Text Gen: ${getFiniteValue(timings.predicted_per_second)} t/s`}
+                        </Text>
+                    )}
+
+                    <ChatActions
+                        nowGenerating={nowGenerating}
+                        isLastMessage={isLastMessage}
+                        index={index}
+                    />
+                </View>
+            </Pressable>
             {showSwipe && (
                 <Swipes index={index} nowGenerating={nowGenerating} isGreeting={isGreeting} />
             )}

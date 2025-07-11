@@ -3,7 +3,6 @@ import StringArrayEditor from '@components/input/StringArrayEditor'
 import ThemedTextInput from '@components/input/ThemedTextInput'
 import Alert from '@components/views/Alert'
 import Avatar from '@components/views/Avatar'
-import FadeDownView from '@components/views/FadeDownView'
 import HeaderTitle from '@components/views/HeaderTitle'
 import PopupMenu from '@components/views/PopupMenu'
 import { db } from '@db'
@@ -20,9 +19,10 @@ import { characterTags, tags } from 'db/schema'
 import { count, eq } from 'drizzle-orm'
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite'
 import * as DocumentPicker from 'expo-document-picker'
-import { useNavigation, useRouter } from 'expo-router'
+import { Redirect, useNavigation, useRouter } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useShallow } from 'zustand/react/shallow'
 
 const ChracterEditor = () => {
@@ -66,6 +66,7 @@ const ChracterEditor = () => {
     }
 
     usePreventRemove(edited, ({ data }) => {
+        if (!charId) return
         Alert.alert({
             title: `Unsaved Changes`,
             description: `You have unsaved changes, leaving now will discard your progress.`,
@@ -89,6 +90,22 @@ const ChracterEditor = () => {
         })
     })
 
+    const handleExportCard = () => {
+        try {
+            if (!charId) return
+            Characters.exportCharacter(charId)
+                .catch((e) => {
+                    Logger.errorToast('Failed to export')
+                    Logger.error(JSON.stringify(e))
+                })
+                .then(() => {
+                    Logger.infoToast('Card Exported!')
+                })
+        } catch (e) {
+            Logger.errorToast('Could not export: ' + JSON.stringify(e))
+        }
+    }
+
     const handleSaveCard = async () => {
         if (characterCard && charId)
             return Characters.db.mutate.updateCard(characterCard, charId).then(() => {
@@ -110,8 +127,8 @@ const ChracterEditor = () => {
                         Characters.db.mutate.deleteCard(charId ?? -1)
                         unloadCharacter()
                         unloadChat()
+                        setEdited(false)
                         Logger.info(`Deleted character: ${charName}`)
-                        router.dismissAll()
                     },
                     type: 'warning',
                 },
@@ -201,8 +218,10 @@ const ChracterEditor = () => {
         })
     }
 
+    if (!charId) return <Redirect href=".." />
+
     return (
-        <FadeDownView style={styles.mainContainer}>
+        <SafeAreaView style={styles.mainContainer} edges={['bottom']}>
             <HeaderTitle title="Edit Character" />
             <AvatarViewer editorButton={false} />
             {characterCard && (
@@ -260,13 +279,22 @@ const ChracterEditor = () => {
                                     label="Delete"
                                     onPress={handleDeleteCard}
                                 />
-
+                                {!edited && (
+                                    <ThemedButton
+                                        iconName="upload"
+                                        iconSize={20}
+                                        label="Export"
+                                        onPress={handleExportCard}
+                                        variant="secondary"
+                                    />
+                                )}
                                 {edited && (
                                     <ThemedButton
                                         iconName="save"
                                         iconSize={20}
                                         label="Save"
                                         onPress={handleSaveCard}
+                                        variant="secondary"
                                     />
                                 )}
                             </View>
@@ -315,7 +343,7 @@ const ChracterEditor = () => {
                             justifyContent: 'space-between',
                         }}>
                         <Text style={{ color: color.text._100 }}>
-                            Alternate Greetings
+                            Alternate Greeting{'   '}
                             {characterCard.alternate_greetings.length !== 0 && (
                                 <Text
                                     style={{
@@ -466,7 +494,7 @@ const ChracterEditor = () => {
                     />
                 </ScrollView>
             )}
-        </FadeDownView>
+        </SafeAreaView>
     )
 }
 

@@ -1,6 +1,7 @@
 import { useAppModeState } from '@lib/state/AppMode'
 import { Logger } from '@lib/state/Logger'
 import { initLlama, LlamaContext } from 'cui-llama.rn'
+import { Asset } from 'expo-asset'
 import {
     copyAsync,
     deleteAsync,
@@ -11,12 +12,11 @@ import {
 import { create } from 'zustand'
 
 import { Llama } from './Local/LlamaLocal'
-import { Asset } from 'expo-asset'
 
 type TokenizerState = {
     model?: LlamaContext
     tokenize: (text: string) => number[]
-    getTokenCount: (text: string) => number
+    getTokenCount: (text: string, image_urls?: string[]) => number
     loadModel: () => Promise<void>
 }
 
@@ -26,14 +26,20 @@ export namespace Tokenizer {
         tokenize: (text: string) => {
             return get()?.model?.tokenizeSync(text)?.tokens ?? []
         },
-        getTokenCount: (text: string) => {
-            const tokens = get()?.model?.tokenizeSync(text)?.tokens?.length ?? 0
-            return tokens
+        getTokenCount: (text: string, image_urls: string[] = []) => {
+            const model = get().model
+            if (!model) {
+                Logger.warn('Tokenizer not loaded')
+                return 0
+            }
+            return model.tokenizeSync(text).tokens.length + image_urls.length * 512
         },
         loadModel: async () => {
             if (get().model) return
 
-            await importModelFromRes()
+            await importModelFromRes().catch((e) => {
+                Logger.error('Could not import Tokenizer: ' + e)
+            })
 
             const context = await initLlama({
                 model: documentDirectory + 'appAssets/llama3tokenizer.gguf',
@@ -74,6 +80,3 @@ export namespace Tokenizer {
         return appMode === 'local' ? llamaTokenizer : defaultTokenizer
     }
 }
-
-Tokenizer.useDefaultTokenizer.getState().loadModel()
-

@@ -2,8 +2,8 @@ import ThemedButton from '@components/buttons/ThemedButton'
 import { useTextFilter } from '@lib/hooks/TextFilter'
 import { MarkdownStyle } from '@lib/markdown/Markdown'
 import { Chats } from '@lib/state/Chat'
-import React, { useEffect, useRef, useState } from 'react'
-import { View, Animated, Easing, useAnimatedValue } from 'react-native'
+import React, { useRef, useState } from 'react'
+import { Animated, Easing, useAnimatedValue, View } from 'react-native'
 import Markdown from 'react-native-markdown-display'
 
 type ChatTextProps = {
@@ -12,7 +12,7 @@ type ChatTextProps = {
 }
 
 const ChatText: React.FC<ChatTextProps> = ({ nowGenerating, index }) => {
-    const markdownStyle = MarkdownStyle.useMarkdownStyle()
+    const { markdown, rules, style } = MarkdownStyle.useCustomFormatting()
     const [showHidden, setShowHidden] = useState(false)
     const { swipeText } = Chats.useSwipeData(index)
     const viewRef = useRef<View>(null)
@@ -32,7 +32,7 @@ const ChatText: React.FC<ChatTextProps> = ({ nowGenerating, index }) => {
     }
 
     const updateHeight = () => {
-        if (firstRender.current) return
+        if (firstRender.current) return (firstRender.current = false)
         if (viewRef.current) {
             viewRef.current.measure((x, y, width, measuredHeight) => {
                 if (targetHeight.current === measuredHeight) return
@@ -43,29 +43,16 @@ const ChatText: React.FC<ChatTextProps> = ({ nowGenerating, index }) => {
         }
     }
 
-    useEffect(() => {
-        if (firstRender.current) {
-            return () => {
-                firstRender.current = false
-            }
-        }
-        // requestAnimationFrame(() => updateHeight())
-    }, [swipeText])
-
     const filteredText = useTextFilter(swipeText?.trim() ?? '')
     const renderedText = showHidden ? swipeText?.trim() : filteredText.result
     return (
         <Animated.View style={{ overflow: 'scroll', height: animHeight }}>
             <View style={{ minHeight: 10 }} ref={viewRef} onLayout={() => updateHeight()}>
-                <Markdown
-                    mergeStyle={false}
-                    markdownit={MarkdownStyle.Rules}
-                    rules={MarkdownStyle.RenderRules}
-                    style={markdownStyle}>
+                <Markdown mergeStyle={false} markdownit={markdown} rules={rules} style={style}>
                     {renderedText}
                 </Markdown>
                 {filteredText.found && (
-                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                    <View style={{ flexDirection: 'row' }}>
                         <ThemedButton
                             onPress={() => setShowHidden(!showHidden)}
                             variant="secondary"
@@ -73,7 +60,8 @@ const ChatText: React.FC<ChatTextProps> = ({ nowGenerating, index }) => {
                             labelStyle={{ flex: 0, fontSize: 12 }}
                             buttonStyle={{
                                 paddingVertical: 0,
-                                paddingHorizontal: 4,
+                                paddingBottom: 0,
+                                paddingHorizontal: 0,
                                 borderWidth: 0,
                             }}
                         />

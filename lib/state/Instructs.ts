@@ -6,9 +6,10 @@ import { eq } from 'drizzle-orm'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
+import { Characters } from './Characters'
 import { Logger } from './Logger'
 import { mmkvStorage } from '../storage/MMKV'
-import { replaceMacros } from '../utils/Macros'
+import { replaceMacros } from '../state/Macros'
 
 const defaultBooleans = {
     wrap: false,
@@ -20,6 +21,12 @@ const defaultBooleans = {
     format_type: 0,
     scenario: true,
     personality: true,
+    hide_think_tags: true,
+    use_common_stop: true,
+    send_images: true,
+    send_audio: true,
+    send_documents: true,
+    last_image_only: true,
 }
 
 const defaultInstructs: InstructType[] = [
@@ -145,13 +152,29 @@ const defaultInstructs: InstructType[] = [
     },
 ]
 
+const commonStopStrings = [
+    '</s>',
+    '<|end|>',
+    '<|eot_id|>',
+    '<|end_of_text|>',
+    '<|im_end|>',
+    '<|EOT|>',
+    '<|END_OF_TURN_TOKEN|>',
+    '<|end_of_turn|>',
+    '<|endoftext|>',
+    '<end_of_turn>',
+    '<eos>',
+    '<｜end▁of▁sentence｜>',
+]
+
 type InstructState = {
     data: InstructType | undefined
     load: (id: number) => Promise<void>
     setData: (instruct: InstructType) => void
     tokenCache: InstructTokenCache | undefined
-    getCache: (charName: string, userName: string) => InstructTokenCache
+    getCache: (charName: string, userName: string) => Promise<InstructTokenCache>
     replacedMacros: () => InstructType
+    getStopSequence: () => string[]
 }
 
 export type InstructListItem = {
@@ -159,7 +182,7 @@ export type InstructListItem = {
     name: string
 }
 
-type InstructTokenCache = {
+export type InstructTokenCache = {
     charName: string
     userName: string
     system_prompt_length: number
@@ -202,7 +225,7 @@ export namespace Instructs {
                 setData: (instruct: InstructType) => {
                     set((state) => ({ ...state, data: instruct, tokenCache: undefined }))
                 },
-                getCache: (charName: string, userName: string) => {
+                getCache: async (charName: string, userName: string) => {
                     const cache = get().tokenCache
                     if (cache && cache.charName === charName && cache.userName === userName)
                         return cache
@@ -226,15 +249,15 @@ export namespace Instructs {
                     const newCache: InstructTokenCache = {
                         charName: charName,
                         userName: userName,
-                        system_prompt_length: getTokenCount(instruct.system_prompt),
-                        system_prefix_length: getTokenCount(instruct.system_prefix),
-                        system_suffix_length: getTokenCount(instruct.system_suffix),
-                        input_prefix_length: getTokenCount(instruct.input_prefix),
-                        input_suffix_length: getTokenCount(instruct.input_suffix),
-                        output_prefix_length: getTokenCount(instruct.output_prefix),
-                        last_output_prefix_length: getTokenCount(instruct.last_output_prefix),
-                        output_suffix_length: getTokenCount(instruct.output_suffix),
-                        user_alignment_message_length: getTokenCount(instruct.system_prompt),
+                        system_prompt_length: await getTokenCount(instruct.system_prompt),
+                        system_prefix_length: await getTokenCount(instruct.system_prefix),
+                        system_suffix_length: await getTokenCount(instruct.system_suffix),
+                        input_prefix_length: await getTokenCount(instruct.input_prefix),
+                        input_suffix_length: await getTokenCount(instruct.input_suffix),
+                        output_prefix_length: await getTokenCount(instruct.output_prefix),
+                        last_output_prefix_length: await getTokenCount(instruct.last_output_prefix),
+                        output_suffix_length: await getTokenCount(instruct.output_suffix),
+                        user_alignment_message_length: await getTokenCount(instruct.system_prompt),
                     }
                     set((state) => ({ ...state, tokenCache: newCache }))
                     return newCache
@@ -253,12 +276,34 @@ export namespace Instructs {
                     })
                     return instruct
                 },
+                getStopSequence: () => {
+                    const instruct = get().replacedMacros()
+                    const sequence: string[] = []
+                    let extras: string[] = []
+                    if (instruct.names) {
+                        const userName = Characters.useCharacterCard.getState().card?.name
+                        const charName = Characters.useCharacterCard.getState()?.card?.name
+                        if (userName) sequence.push(`${userName} :`)
+                        if (charName) sequence.push(`${charName} :`)
+                    }
+
+                    if (instruct.stop_sequence !== '')
+                        instruct.stop_sequence
+                            .split(',')
+                            .forEach((item) => item !== '' && sequence.push(item))
+
+                    if (instruct.use_common_stop) {
+                        extras = [...extras, ...commonStopStrings]
+                    }
+
+                    return [...sequence, ...extras]
+                },
             }),
             {
                 name: Storage.Instruct,
                 storage: createJSONStorage(() => mmkvStorage),
                 partialize: (state) => ({ data: state.data }),
-                version: 3,
+                version: 6,
                 migrate: async (persistedState: any, version) => {
                     if (!version) {
                         persistedState.data.timestamp = false
@@ -286,6 +331,21 @@ export namespace Instructs {
                     if (version === 2) {
                         persistedState.data.scenario = true
                         persistedState.data.personality = true
+                    }
+
+                    if (version === 3) {
+                        persistedState.data.hide_think_tags = true
+                    }
+
+                    if (version === 4) {
+                        persistedState.data.use_common_stop = true
+                    }
+
+                    if (version === 5) {
+                        persistedState.data.send_images = true
+                        persistedState.data.send_audio = true
+                        persistedState.data.send_documents = true
+                        persistedState.data.last_image_only = true
                     }
 
                     return persistedState

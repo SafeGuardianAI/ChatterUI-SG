@@ -5,6 +5,8 @@ import { Characters } from '@lib/state/Characters'
 import React from 'react'
 import { View } from 'react-native'
 
+import TagHiderSettings from './TagHiderSettings'
+
 const CharacterSettings = () => {
     return (
         <View style={{ rowGap: 8 }}>
@@ -18,11 +20,15 @@ const CharacterSettings = () => {
                         description: `This will add the default AI Bot card to your character list.`,
                         buttons: [
                             { label: 'Cancel' },
-                            { label: 'Create Default Card', onPress: Characters.createDefaultCard },
+                            {
+                                label: 'Create Default Card',
+                                onPress: async () => await Characters.createDefaultCard(),
+                            },
                         ],
                     })
                 }}
             />
+            <TagHiderSettings />
         </View>
     )
 }

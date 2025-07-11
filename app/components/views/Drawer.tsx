@@ -1,4 +1,4 @@
-import ThemedButton from '@components/buttons/ThemedButton'
+import ThemedButton, { ThemedButtonProps } from '@components/buttons/ThemedButton'
 import { AntDesign } from '@expo/vector-icons'
 import { Theme } from '@lib/theme/ThemeManager'
 import { useFocusEffect } from 'expo-router'
@@ -18,6 +18,7 @@ import Animated, {
     SlideOutUp,
 } from 'react-native-reanimated'
 import { create } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 
 import FadeBackrop from './FadeBackdrop'
 
@@ -44,7 +45,7 @@ type DrawerBodyProps = {
     children?: ReactNode
 }
 
-type DrawerButtonProps = {
+interface DrawerButtonProps extends ThemedButtonProps {
     drawerID: Drawer.ID
     openIcon?: keyof typeof AntDesign.glyphMap
     closeIcon?: keyof typeof AntDesign.glyphMap
@@ -86,10 +87,12 @@ namespace Drawer {
         children = undefined,
     }) => {
         const styles = useStyles()
-        const { setShow, show } = useDrawerState((state) => ({
-            setShow: state.setShow,
-            show: state.values?.[drawerId],
-        }))
+        const { setShow, show } = useDrawerState(
+            useShallow((state) => ({
+                setShow: state.setShow,
+                show: state.values?.[drawerId],
+            }))
+        )
         const handleOverlayClick = () => setShow(drawerId, false)
 
         useFocusEffect(
@@ -105,31 +108,34 @@ namespace Drawer {
                 return () => handler.remove()
             }, [show])
         )
+        if (!show) return
 
-        if (show)
-            return (
-                <View style={styles.absolute}>
-                    <FadeBackrop handleOverlayClick={handleOverlayClick}>
-                        <Animated.View
-                            style={{ ...styles.drawer, ...drawerStyle }}
-                            entering={animationIn[direction]}
-                            exiting={animationOut[direction]}>
-                            {children}
-                        </Animated.View>
-                    </FadeBackrop>
-                </View>
-            )
+        return (
+            <View style={styles.absolute}>
+                <FadeBackrop handleOverlayClick={handleOverlayClick}>
+                    <Animated.View
+                        style={{ ...styles.drawer, ...drawerStyle }}
+                        entering={animationIn[direction]}
+                        exiting={animationOut[direction]}>
+                        {children}
+                    </Animated.View>
+                </FadeBackrop>
+            </View>
+        )
     }
 
     export const Button: React.FC<DrawerButtonProps> = ({
         drawerID: drawerId,
         openIcon = 'menu-fold',
         closeIcon = 'close',
+        ...rest
     }) => {
-        const { setShow, show } = useDrawerState((state) => ({
-            setShow: state.setShow,
-            show: state.values?.[drawerId],
-        }))
+        const { setShow, show } = useDrawerState(
+            useShallow((state) => ({
+                setShow: state.setShow,
+                show: state.values?.[drawerId],
+            }))
+        )
         return (
             <ThemedButton
                 iconSize={24}
@@ -138,15 +144,18 @@ namespace Drawer {
                 }}
                 variant="tertiary"
                 iconName={show ? closeIcon : openIcon}
+                {...rest}
             />
         )
     }
 
     export const Gesture: React.FC<DrawerGestureProps> = ({ config, ...rest }) => {
-        const { setShowDrawer, values } = Drawer.useDrawerState((state) => ({
-            setShowDrawer: state.setShow,
-            values: state.values,
-        }))
+        const { setShowDrawer, values } = Drawer.useDrawerState(
+            useShallow((state) => ({
+                setShowDrawer: state.setShow,
+                values: state.values,
+            }))
+        )
 
         const drawerShown = config.map((item) => values?.[item.drawerID]).some((item) => item)
 

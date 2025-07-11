@@ -105,10 +105,8 @@ const StringArrayEditor: React.FC<StringArrayEditorProps> = ({
                             }}
                             contentContainerStyle={{
                                 backgroundColor: color.neutral._100,
-                                borderColor: color.neutral._200,
-                                borderWidth: 1,
                                 flexDirection: 'row',
-                                columnGap: 8,
+                                columnGap: 4,
                             }}>
                             {filteredSuggestions.map((item, index) => (
                                 <ThemedButton
@@ -156,7 +154,7 @@ const useStyles = () => {
             color: color.text._100,
             borderColor: color.neutral._300,
             paddingHorizontal: spacing.s,
-            paddingVertical: spacing.m,
+            paddingVertical: spacing.s,
             borderRadius: borderRadius.m,
         },
 

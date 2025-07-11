@@ -4,6 +4,7 @@ import { mmkvStorage } from '@lib/storage/MMKV'
 import * as Speech from 'expo-speech'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { useShallow } from 'zustand/react/shallow'
 
 import { Chats, useInference } from './Chat'
 
@@ -13,7 +14,7 @@ type TTSState = {
     enabled: boolean
     auto: boolean
     rate: number
-    startTTS: (text: string, index: number, callback?: () => void) => Promise<void>
+    startTTS: (text: string, index: number) => Promise<void>
     stopTTS: () => Promise<void>
     setEnabled: (b: boolean) => void
     setAuto: (b: boolean) => void
@@ -39,7 +40,8 @@ type TTSState = {
     insertBuffer: (text: string) => void
 }
 
-const sentenceEndRegex = /(?<=[^\d])([.?!])(?:["'`*_)]*)\s+(?=[A-Z0-9])|([.?!])(?:["'`*_)]*)$/gm
+const sentenceEndRegex =
+    /(?<=[^\d])([。…？！.?!])(?:["'`*_)]*)\s+(?=[A-Z0-9])|([。…？！.?!])(?:["'`*_)]*)$/gm
 
 export const useTTS = () => {
     const {
@@ -56,21 +58,23 @@ export const useTTS = () => {
         rate,
         live,
         setLive,
-    } = useTTSState((state) => ({
-        startTTS: state.startTTS,
-        stopTTS: state.stopTTS,
-        activeChatIndex: state.activeChatIndex,
-        setVoice: state.setVoice,
-        setEnabled: state.setEnabled,
-        setAuto: state.setAuto,
-        setRate: state.setRate,
-        auto: state.auto,
-        enabled: state.enabled,
-        voice: state.voice,
-        rate: state.rate,
-        live: state.liveTTS,
-        setLive: state.setLiveTTS,
-    }))
+    } = useTTSState(
+        useShallow((state) => ({
+            startTTS: state.startTTS,
+            stopTTS: state.stopTTS,
+            activeChatIndex: state.activeChatIndex,
+            setVoice: state.setVoice,
+            setEnabled: state.setEnabled,
+            setAuto: state.setAuto,
+            setRate: state.setRate,
+            auto: state.auto,
+            enabled: state.enabled,
+            voice: state.voice,
+            rate: state.rate,
+            live: state.liveTTS,
+            setLive: state.setLiveTTS,
+        }))
+    )
     return {
         startTTS,
         activeChatIndex,
@@ -112,10 +116,9 @@ export const useTTSState = create<TTSState>()(
             liveTTS: false,
             rate: 1,
             activeChatIndex: undefined,
-            startTTS: async (text: string, index: number, exitCallback = () => {}) => {
+            startTTS: async (text: string, index: number) => {
                 const clearIndex = () => {
-                    if (get().activeChatIndex === index)
-                        set((state) => ({ activeChatIndex: undefined }))
+                    if (get().activeChatIndex === index) set({ activeChatIndex: undefined })
                 }
 
                 const currentSpeaker = get().voice
@@ -127,7 +130,7 @@ export const useTTSState = create<TTSState>()(
                     return
                 }
                 if (await Speech.isSpeakingAsync()) await Speech.stop()
-                const filter = /([!?.,*"])/
+                const filter = /([。…！？、!?.,*"])/
                 const filteredchunks: string[] = []
                 const chunks = text.split(filter)
                 chunks.forEach((item, index) => {
@@ -142,7 +145,7 @@ export const useTTSState = create<TTSState>()(
                     item.replaceAll(/[*"]/g, '').trim()
                 )
                 Logger.debug('TTS started with ' + cleanedchunks.length + ' chunks')
-                set((state) => ({ ...state, activeChatIndex: index }))
+                set({ activeChatIndex: index })
                 cleanedchunks.forEach((chunk, index) =>
                     Speech.speak(chunk, {
                         language: currentSpeaker?.language,
@@ -158,26 +161,26 @@ export const useTTSState = create<TTSState>()(
             },
             stopTTS: async () => {
                 Logger.info('TTS stopped')
-                set((state) => ({ activeChatIndex: undefined }))
+                set({ buffer: '', activeChatIndex: undefined, pauseLive: get().liveTTS })
                 await Speech.stop()
             },
             setEnabled: (b: boolean) => {
-                set((state) => ({ enabled: b }))
+                set({ enabled: b })
             },
             setAuto: (b: boolean) => {
-                set((state) => ({ auto: b }))
+                set({ auto: b })
             },
             setVoice: (v: Speech.Voice) => {
-                set((state) => ({ voice: v }))
+                set({ voice: v })
             },
             setRate: (r: number) => {
-                set((state) => ({ rate: r }))
+                set({ rate: r })
             },
             setLiveTTS: (b: boolean) => {
-                set((state) => ({ liveTTS: b }))
+                set({ liveTTS: b })
             },
             setPauseLive: (b: boolean) => {
-                set((state) => ({ pauseLive: b }))
+                set({ pauseLive: b })
             },
             speak: (text, onDone = () => {}, onStop = () => {}) => {
                 const currentSpeaker = get().voice
@@ -191,17 +194,17 @@ export const useTTSState = create<TTSState>()(
             },
 
             handleEndGeneration: async (lastIndex, text) => {
-                if (get().activeChatIndex !== undefined) return
+                if (!get().enabled) return
                 if (get().liveTTS) {
                     get().clearAndRunBuffer(lastIndex)
-                } else if (get().enabled && get().auto) {
+                } else if (get().auto) {
                     await get().stopTTS()
                     get().startTTS(text, lastIndex)
                 }
             },
 
             handleStartGeneration: async (lastIndex) => {
-                if (get().liveTTS) {
+                if (get().enabled && get().liveTTS) {
                     await Speech.stop()
                     set({ activeChatIndex: lastIndex })
                 }
@@ -229,7 +232,7 @@ export const useTTSState = create<TTSState>()(
                 set({ buffer: '' })
             },
             insertBuffer: (text: string) => {
-                if (!get().liveTTS || get().pauseLive) return
+                if (!get().enabled || !get().liveTTS || get().pauseLive) return
                 const newBuffer = get().buffer + text
 
                 let lastMatchIndex = -1
@@ -244,16 +247,7 @@ export const useTTSState = create<TTSState>()(
                     const remainder = newBuffer.slice(lastMatchIndex)
                     const clean = cleanMarkdown(fullSentence)
                     if (clean) {
-                        get().speak(
-                            clean,
-                            () => {},
-                            () =>
-                                set({
-                                    pauseLive: true,
-                                    activeChatIndex: undefined,
-                                    buffer: '',
-                                })
-                        )
+                        get().speak(clean)
                     }
                     set({ buffer: remainder })
                 } else {

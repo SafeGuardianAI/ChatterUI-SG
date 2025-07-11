@@ -12,6 +12,7 @@ import {
     TouchableOpacity,
     GestureResponderEvent,
 } from 'react-native'
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 
 type TextBoxModalProps = {
     booleans: [boolean, (b: boolean) => void]
@@ -24,6 +25,7 @@ type TextBoxModalProps = {
     errorMessage?: string
     autoFocus?: boolean
     defaultValue?: string
+    multiline?: boolean
 }
 
 const TextBoxModal: React.FC<TextBoxModalProps> = ({
@@ -37,6 +39,7 @@ const TextBoxModal: React.FC<TextBoxModalProps> = ({
     errorMessage = 'Name cannot be empty',
     autoFocus = false,
     defaultValue = '',
+    multiline = false,
 }) => {
     const styles = useStyles()
     const { color, spacing } = Theme.useTheme()
@@ -62,6 +65,8 @@ const TextBoxModal: React.FC<TextBoxModalProps> = ({
             visible={showModal}
             style={{ flex: 1 }}
             transparent
+            statusBarTranslucent
+            navigationBarTranslucent
             onRequestClose={handleClose}
             animationType="fade">
             <TouchableOpacity
@@ -72,7 +77,7 @@ const TextBoxModal: React.FC<TextBoxModalProps> = ({
                     backgroundColor: 'rgba(0, 0, 0, 0.5)',
                     justifyContent: 'center',
                 }}>
-                <View style={styles.modalview}>
+                <KeyboardAvoidingView style={styles.modalview}>
                     <Text style={styles.title}>{title}</Text>
                     <View style={styles.inputContainer}>
                         <TextInput
@@ -82,6 +87,8 @@ const TextBoxModal: React.FC<TextBoxModalProps> = ({
                             onChangeText={setText}
                             placeholder={placeholder}
                             placeholderTextColor={color.text._700}
+                            multiline={multiline}
+                            numberOfLines={10}
                         />
                         {showPaste && !text && (
                             <TouchableOpacity
@@ -123,7 +130,7 @@ const TextBoxModal: React.FC<TextBoxModalProps> = ({
                             />
                         </View>
                     </View>
-                </View>
+                </KeyboardAvoidingView>
             </TouchableOpacity>
         </Modal>
     )

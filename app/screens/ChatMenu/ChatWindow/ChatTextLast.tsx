@@ -13,7 +13,7 @@ type ChatTextProps = {
 }
 
 const ChatTextLast: React.FC<ChatTextProps> = ({ nowGenerating, index }) => {
-    const markdownStyle = MarkdownStyle.useMarkdownStyle()
+    const { markdown, rules, style } = MarkdownStyle.useCustomFormatting()
 
     const { swipeText, swipeId } = Chats.useSwipeData(index)
     const { buffer } = Chats.useBuffer()
@@ -29,7 +29,7 @@ const ChatTextLast: React.FC<ChatTextProps> = ({ nowGenerating, index }) => {
         animHeight.stopAnimation(() =>
             Animated.timing(animHeight, {
                 toValue: newheight,
-                duration: 150,
+                duration: 300,
                 useNativeDriver: false,
                 easing: Easing.inOut((x) => x * x),
             }).start()
@@ -37,8 +37,8 @@ const ChatTextLast: React.FC<ChatTextProps> = ({ nowGenerating, index }) => {
     }
 
     const updateHeight = () => {
-        if (firstRender.current) return
-        const showPadding = nowGenerating && buffer.data !== ''
+        if (firstRender.current) return (firstRender.current = false)
+        const showPadding = nowGenerating && buffer.data
         const overflowPadding = showPadding ? 12 : 0
         if (viewRef.current) {
             viewRef.current.measure((x, y, width, measuredHeight) => {
@@ -52,33 +52,24 @@ const ChatTextLast: React.FC<ChatTextProps> = ({ nowGenerating, index }) => {
     }
 
     useEffect(() => {
-        if (firstRender.current) {
-            return () => {
-                firstRender.current = false
-            }
-        }
-        requestAnimationFrame(() => updateHeight())
-    }, [nowGenerating, buffer, swipeText])
+        if (!nowGenerating && !firstRender.current) setTimeout(() => updateHeight(), 400)
+    }, [nowGenerating])
 
     const filteredText = useTextFilter(swipeText?.trim() ?? '')
     const renderedText = showHidden ? swipeText?.trim() : filteredText.result
     return (
         <Animated.View style={{ overflow: 'scroll', height: animHeight }}>
-            <View style={{ minHeight: 10 }} ref={viewRef}>
+            <View style={{ minHeight: 10 }} ref={viewRef} onLayout={updateHeight}>
                 {swipeId === currentSwipeId && nowGenerating && buffer.data === '' && (
                     <AnimatedEllipsis />
                 )}
-                <Markdown
-                    mergeStyle={false}
-                    markdownit={MarkdownStyle.Rules}
-                    rules={MarkdownStyle.RenderRules}
-                    style={markdownStyle}>
+                <Markdown mergeStyle={false} markdownit={markdown} rules={rules} style={style}>
                     {nowGenerating && swipeId === currentSwipeId
                         ? buffer.data.trim()
                         : renderedText}
                 </Markdown>
                 {filteredText.found && (
-                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                    <View style={{ flexDirection: 'row' }}>
                         <ThemedButton
                             onPress={() => setShowHidden(!showHidden)}
                             variant="secondary"
@@ -86,7 +77,7 @@ const ChatTextLast: React.FC<ChatTextProps> = ({ nowGenerating, index }) => {
                             labelStyle={{ flex: 0, fontSize: 12 }}
                             buttonStyle={{
                                 paddingVertical: 0,
-                                paddingHorizontal: 4,
+                                paddingHorizontal: 0,
                                 borderWidth: 0,
                             }}
                         />

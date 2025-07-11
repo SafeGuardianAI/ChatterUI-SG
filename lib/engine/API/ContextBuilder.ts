@@ -1,13 +1,31 @@
 import { AppSettings } from '@lib/constants/GlobalValues'
 import { Tokenizer } from '@lib/engine/Tokenizer'
 import { Characters } from '@lib/state/Characters'
-import { Chats } from '@lib/state/Chat'
-import { Instructs } from '@lib/state/Instructs'
+import { ChatEntry, Chats } from '@lib/state/Chat'
+import { Instructs, InstructType } from '@lib/state/Instructs'
 import { Logger } from '@lib/state/Logger'
 import { mmkv } from '@lib/storage/MMKV'
-import { replaceMacros } from '@lib/utils/Macros'
+import { Macro } from '@lib/utils/Macros'
+import { readAsStringAsync } from 'expo-file-system'
 
 import { APIConfiguration, APIValues } from './APIBuilder.types'
+import { replaceMacros } from '@lib/state/Macros'
+
+const getMacrosRules = (instruct: InstructType) => {
+    const rules = []
+    if (instruct.hide_think_tags) {
+        rules.push({
+            macro: /<think>[\s\S]*?<\/think>/g,
+            value: '',
+        })
+    }
+    return rules
+}
+
+const replaceMacrosInternal = (data: string, rules: Macro[]) => {
+    for (const rule of rules) data = replaceMacros(data, { extraMacros: rules })
+    return data
+}
 
 const getCardData = () => {
     const userCard = { ...Characters.useUserCard.getState().card }
@@ -15,14 +33,14 @@ const getCardData = () => {
     return { userCard, currentCard }
 }
 
-const getCaches = (charName: string, userName: string) => {
-    const characterCache = Characters.useCharacterCard.getState().getCache(userName)
-    const userCache = Characters.useUserCard.getState().getCache(charName)
-    const instructCache = Instructs.useInstruct.getState().getCache(charName, userName)
+const getCaches = async (charName: string, userName: string) => {
+    const characterCache = await Characters.useCharacterCard.getState().getCache(userName)
+    const userCache = await Characters.useUserCard.getState().getCache(charName)
+    const instructCache = await Instructs.useInstruct.getState().getCache(charName, userName)
     return { characterCache, userCache, instructCache }
 }
 
-export const buildTextCompletionContext = (max_length: number, printTimings = true) => {
+export const buildTextCompletionContext = async (max_length: number, printTimings = true) => {
     const delta = performance.now()
     const bypassContextLength = mmkv.getBoolean(AppSettings.BypassContextLength)
     const tokenizer = Tokenizer.getTokenizer()
@@ -36,8 +54,8 @@ export const buildTextCompletionContext = (max_length: number, printTimings = tr
     const userCardData = (userCard?.description ?? '').trim()
     const charCardData = (currentCard?.description ?? '').trim()
 
-    const { characterCache, userCache, instructCache } = getCaches(charName, userName)
-
+    const { characterCache, userCache, instructCache } = await getCaches(charName, userName)
+    const rules = getMacrosRules(currentInstruct)
     let payload = ``
 
     // set suffix length as its always added
@@ -77,7 +95,7 @@ export const buildTextCompletionContext = (max_length: number, printTimings = tr
     let index = messages.length - 1
 
     const wrap_string = `\n`
-    const wrap_length = currentInstruct.wrap ? tokenizer(wrap_string) : 0
+    const wrap_length = currentInstruct.wrap ? await tokenizer(wrap_string) : 0
 
     // we use this to check if the first message is reached
     // this is needed to check if examples should be added
@@ -85,7 +103,7 @@ export const buildTextCompletionContext = (max_length: number, printTimings = tr
 
     // we require lengths for names if use_names is enabled
     for (const message of messages.reverse()) {
-        const swipe_len = Chats.useChatState.getState().getTokenCount(index)
+        const swipe_len = await Chats.useChatState.getState().getTokenCount(index)
         const swipe_data = message.swipes[message.swipe_id]
 
         /** Accumulate total string length
@@ -107,10 +125,10 @@ export const buildTextCompletionContext = (max_length: number, printTimings = tr
                 : instructCache.output_suffix_length
 
         const timestamp_string = `[${swipe_data.send_date.toString().split(' ')[0]} ${swipe_data.send_date.toLocaleTimeString()}]\n`
-        const timestamp_length = currentInstruct.timestamp ? tokenizer(timestamp_string) : 0
+        const timestamp_length = currentInstruct.timestamp ? await tokenizer(timestamp_string) : 0
 
         const name_string = `${message.name}: `
-        const name_length = currentInstruct.names ? tokenizer(name_string) : 0
+        const name_length = currentInstruct.names ? await tokenizer(name_string) : 0
 
         const shard_length = swipe_len + instruct_len + name_length + timestamp_length + wrap_length
 
@@ -166,7 +184,7 @@ export const buildTextCompletionContext = (max_length: number, printTimings = tr
 
     payload += currentInstruct.system_suffix
 
-    payload = replaceMacros(payload + message_acc)
+    payload = replaceMacrosInternal(payload + message_acc, rules)
     if (printTimings) {
         Logger.info(`Approximate Context Size: ${message_acc_length + payload_length} tokens`)
         Logger.info(`${(performance.now() - delta).toFixed(2)}ms taken to build context`)
@@ -176,13 +194,18 @@ export const buildTextCompletionContext = (max_length: number, printTimings = tr
     return payload
 }
 
-type Message = { role: string; [x: string]: string }
+type ContentTypes =
+    | { type: 'input_text' | 'text'; text: string }
+    | { type: 'image_url'; image_url: { url: string } }
+    | { type: 'input_audio'; input_audio: { data: string; format: string } }
 
-export const buildChatCompletionContext = (
+type Message = { role: string; [x: string]: ContentTypes[] | string }
+
+export const buildChatCompletionContext = async (
     max_length: number,
     config: APIConfiguration,
     values: APIValues
-): Message[] | undefined => {
+): Promise<Message[] | void> => {
     const delta = performance.now()
     const bypassContextLength = mmkv.getBoolean(AppSettings.BypassContextLength)
     if (config.request.completionType.type !== 'chatCompletions') return
@@ -191,12 +214,12 @@ export const buildChatCompletionContext = (
 
     const messages = [...(Chats.useChatState.getState().data?.messages ?? [])]
     const currentInstruct = Instructs.useInstruct.getState().replacedMacros()
-
+    const rules = getMacrosRules(currentInstruct)
     const { userCard, currentCard } = getCardData()
     const userName = userCard?.name ?? ''
     const charName = currentCard?.name ?? ''
 
-    const { characterCache, userCache, instructCache } = getCaches(charName, userName)
+    const { characterCache, userCache, instructCache } = await getCaches(charName, userName)
 
     const buffer = Chats.useChatState.getState().buffer
 
@@ -222,23 +245,39 @@ export const buildChatCompletionContext = (
     }
 
     const payload: Message[] = [
-        { role: completionFeats.systemRole, [completionFeats.contentName]: replaceMacros(initial) },
+        {
+            role: completionFeats.systemRole,
+            [completionFeats.contentName]: replaceMacrosInternal(initial, rules),
+        },
     ]
-
+    let hasImage = false
     const messageBuffer: Message[] = []
-
     let index = messages.length - 1
     for (const message of messages.reverse()) {
         const swipe_data = message.swipes[message.swipe_id]
         // special case for claude, prefill may be useful!
         const timestamp_string = `[${swipe_data.send_date.toString().split(' ')[0]} ${swipe_data.send_date.toLocaleTimeString()}]\n`
-        const timestamp_length = currentInstruct.timestamp ? tokenizer(timestamp_string) : 0
+        const timestamp_length = currentInstruct.timestamp ? await tokenizer(timestamp_string) : 0
 
         const name_string = `${message.name} :`
-        const name_length = currentInstruct.names ? tokenizer(name_string) : 0
+        const name_length = currentInstruct.names ? await tokenizer(name_string) : 0
+        const { attachments, hasImageNew } = getValidAttachments(
+            message,
+            completionFeats,
+            currentInstruct,
+            hasImage
+        )
+
         const len =
-            Chats.useChatState.getState().getTokenCount(index) + name_length + timestamp_length
+            (await Chats.useChatState.getState().getTokenCount(index, {
+                addAttachments: attachments.length > 0,
+                lastImageOnly: currentInstruct.last_image_only,
+            })) +
+            name_length +
+            timestamp_length
+
         if (total_length + len > max_length && !bypassContextLength) break
+        hasImage = hasImageNew
 
         const prefill = index === messages.length - 1 ? values.prefill : ''
 
@@ -246,14 +285,55 @@ export const buildChatCompletionContext = (
             index--
             continue
         }
+        const role = message.is_user ? completionFeats.userRole : completionFeats.assistantRole
 
-        messageBuffer.push({
-            role: message.is_user ? completionFeats.userRole : completionFeats.assistantRole,
-            content: replaceMacros(prefill + swipe_data.swipe),
-        })
+        if (message.attachments.length > 0) {
+            Logger.warn('Image output is incomplete')
+
+            const images: ContentTypes[] = await Promise.all(
+                attachments.map(async (item) => {
+                    const base64data = await readAsStringAsync(item.uri, { encoding: 'base64' })
+                    if (item.type === 'image')
+                        return {
+                            type: 'image_url',
+                            image_url: {
+                                url: 'data:' + item.mime_type + ';base64,' + base64data,
+                            },
+                        }
+                    return {
+                        type: 'input_audio',
+                        input_audio: {
+                            data: base64data,
+                            format: item.mime_type.split('/')[1],
+                        },
+                    }
+                })
+            )
+
+            messageBuffer.push({
+                role: role,
+                [completionFeats.contentName]: [
+                    {
+                        type: 'text',
+                        text: replaceMacrosInternal(prefill + swipe_data.swipe, rules),
+                    },
+                    ...images,
+                ],
+            })
+        } else {
+            messageBuffer.push({
+                role: role,
+                [completionFeats.contentName]: replaceMacrosInternal(
+                    prefill + swipe_data.swipe,
+                    rules
+                ),
+            })
+        }
+
         total_length += len
         index--
     }
+
     if (config.features.useFirstMessage && values.firstMessage)
         messageBuffer.push({
             role: completionFeats.userRole,
@@ -266,4 +346,39 @@ export const buildChatCompletionContext = (
     if (mmkv.getBoolean(AppSettings.PrintContext)) Logger.info(JSON.stringify(output))
 
     return output
+}
+
+const getValidAttachments = (
+    entry: ChatEntry,
+    config: {
+        type: 'chatCompletions'
+        userRole: string
+        systemRole: string
+        assistantRole: string
+        contentName: string
+        supportsAudio?: boolean
+        supportsImages?: boolean
+    },
+    instruct: InstructType,
+    hasImage: boolean
+) => {
+    let hasImageNew = hasImage
+    const audioAttachments = entry.attachments.filter(
+        (item) => item.type === 'audio' && instruct.send_audio && config.supportsAudio
+    )
+
+    let imageAttachments: typeof entry.attachments = []
+    if (instruct.send_images && config.supportsImages) {
+        const images = entry.attachments.filter((item) => item.type === 'image')
+        if (instruct.last_image_only && images.length > 0) {
+            if (!hasImageNew) {
+                hasImageNew = true
+                imageAttachments = [images[0]]
+            }
+        } else {
+            imageAttachments = images
+        }
+    }
+    const attachments = [...audioAttachments, ...imageAttachments]
+    return { hasImageNew, attachments }
 }

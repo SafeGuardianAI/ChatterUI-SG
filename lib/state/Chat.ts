@@ -1,10 +1,24 @@
 import { db as database } from '@db'
 import { Tokenizer } from '@lib/engine/Tokenizer'
-import { replaceMacros } from '@lib/utils/Macros'
+import { AppDirectory } from '@lib/utils/File'
+import { replaceMacros } from '@lib/state/Macros'
 import { convertToFormatInstruct } from '@lib/utils/TextFormat'
-import { chatEntries, chats, ChatSwipe, chatSwipes, CompletionTimings } from 'db/schema'
-import { and, count, desc, eq, getTableColumns, like } from 'drizzle-orm'
+import {
+    chatAttachments,
+    ChatAttachmentType,
+    chatEntries,
+    ChatEntryType,
+    chats,
+    ChatSwipe,
+    chatSwipes,
+    ChatType,
+    CompletionTimings,
+} from 'db/schema'
+import { and, count, desc, eq, getTableColumns, like, sql } from 'drizzle-orm'
+import { randomUUID } from 'expo-crypto'
+import { copyAsync, deleteAsync, getInfoAsync } from 'expo-file-system'
 import * as Notifications from 'expo-notifications'
+import mime from 'mime/lite'
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -15,34 +29,51 @@ import { mmkv } from '../storage/MMKV'
 
 export interface ChatSwipeState extends ChatSwipe {
     token_count?: number
+    attachment_count?: number
     regen_cache?: string
 }
 
-export type ChatEntry = {
-    id: number
-    chat_id: number
-    name: string
-    is_user: boolean
-    order: number
-    swipe_id: number
+export interface ChatEntry extends ChatEntryType {
     swipes: ChatSwipeState[]
+    attachments: ChatAttachmentType[]
 }
 
-export type ChatData = {
-    id: number
-    create_date: Date
-    character_id: number
-    user_id: number | null
-    name: string
-    messages: ChatEntry[] | undefined
+export interface ChatData extends ChatType {
+    messages: ChatEntry[]
+    autoScroll?: { cause: 'search' | 'saveScroll'; index: number }
+}
+
+interface ChatSearchQueryResult {
+    swipeId: number
+    chatId: number
+    chatEntryId: number
+    chatName: string
+    swipe: string
+    sendDate: number
+}
+
+interface ChatSearchResult extends Omit<ChatSearchQueryResult, 'sendDate'> {
+    sendDate: Date
 }
 
 export interface ChatState {
     data: ChatData | undefined
     buffer: OutputBuffer
-    load: (chatId: number) => Promise<void>
+    // chat data
+    load: (
+        chatId: number,
+        overrideScrollOffset?: { value: number; type: 'entryId' | 'index' }
+    ) => Promise<void>
     delete: (chatId: number) => Promise<void>
-    addEntry: (name: string, is_user: boolean, message: string) => Promise<number | void>
+    reset: () => void
+
+    // chat entry data
+    addEntry: (
+        name: string,
+        is_user: boolean,
+        message: string,
+        attachments?: string[]
+    ) => Promise<number | void>
     updateEntry: (
         index: number,
         message: string,
@@ -55,17 +86,31 @@ export interface ChatState {
         }
     ) => Promise<void>
     deleteEntry: (index: number) => Promise<void>
-    reset: () => void
+    renameChat: (chatId: number, name: string) => void
+    // swipe data
     swipe: (index: number, direction: number) => Promise<boolean>
     addSwipe: (index: number, message?: string) => Promise<number | void>
-    getTokenCount: (index: number) => number
+
+    // buffer data
     setBuffer: (data: OutputBuffer) => void
     insertBuffer: (data: string) => void
     updateFromBuffer: (cachedSwipeId?: number) => Promise<void>
     insertLastToBuffer: () => void
+
+    // regen data
     setRegenCache: () => void
     getRegenCache: () => string
     resetRegenCache: () => void
+
+    // attachments
+    // add attachment
+    removeAttachment: (entryId: number, attachmentId: number) => Promise<void>
+
+    // generation system
+    getTokenCount: (
+        index: number,
+        options?: { addAttachments: boolean; lastImageOnly: boolean }
+    ) => Promise<number>
     stopGenerating: () => void
     startGenerating: (swipeId: number) => void
 }
@@ -98,21 +143,17 @@ export const sendGenerateCompleteNotification = async () => {
         ? Chats.useChatState.getState().buffer?.data?.trim()
         : 'ChatterUI has finished a response.'
 
-    Notifications.setNotificationHandler({
-        handleNotification: async () => ({
-            shouldShowAlert: false,
-            shouldPlaySound: false,
-            shouldSetBadge: false,
-        }),
-    })
-
     Notifications.scheduleNotificationAsync({
         content: {
             title: notificationTitle,
             body: notificationText,
-            sound: !!mmkv.getBoolean(AppSettings.PlayNotificationSound),
+            sound: mmkv.getBoolean(AppSettings.PlayNotificationSound),
             vibrate: mmkv.getBoolean(AppSettings.VibrateNotification) ? [250, 125, 250] : undefined,
             badge: 0,
+            data: {
+                chatId: Chats.useChatState.getState().data?.id,
+                characterId: Characters.useCharacterCard.getState().id,
+            },
         },
         trigger: null,
     })
@@ -156,8 +197,8 @@ export namespace Chats {
             useInference.getState().stopGenerating()
             get().setBuffer({ data: '' })
         },
-        load: async (chatId: number) => {
-            const data = await db.query.chat(chatId)
+        load: async (chatId, overrideScrollOffset) => {
+            const data = (await db.query.chat(chatId)) as ChatData | undefined
 
             if (data?.user_id && mmkv.getBoolean(AppSettings.AutoLoadUser)) {
                 const userID = Characters.useUserCard.getState().id
@@ -171,10 +212,39 @@ export namespace Chats {
                 }
             }
 
-            set((state) => ({
-                ...state,
+            if (data) {
+                if (overrideScrollOffset !== undefined) {
+                    if (overrideScrollOffset.type === 'index') {
+                        const entryIndex = Math.max(
+                            0,
+                            data.messages.length - overrideScrollOffset.value
+                        )
+                        data.autoScroll = { cause: 'search', index: entryIndex }
+                    }
+                    if (overrideScrollOffset.type === 'entryId') {
+                        const entryIndex = data.messages.findIndex(
+                            (item) => item.id === overrideScrollOffset.value
+                        )
+                        if (entryIndex !== -1) {
+                            data.autoScroll = {
+                                cause: 'search',
+                                index: data.messages.length - entryIndex - 1,
+                            }
+                        }
+                    }
+                } else {
+                    // we assume this is taken from ChatWindow
+                    data.autoScroll = { cause: 'saveScroll', index: data.scroll_offset }
+                }
+
+                if (data.autoScroll?.index && data.autoScroll.index > data.messages.length) {
+                    data.autoScroll.index = data.messages.length - 1
+                }
+            }
+
+            set({
                 data: data,
-            }))
+            })
         },
 
         delete: async (chatId: number) => {
@@ -188,17 +258,31 @@ export namespace Chats {
                 data: undefined,
             })),
 
-        addEntry: async (name: string, is_user: boolean, message: string) => {
+        addEntry: async (
+            name: string,
+            is_user: boolean,
+            message: string,
+            attachments: string[] = []
+        ) => {
             const messages = get().data?.messages
             const chatId = get().data?.id
             if (!messages || !chatId) return
             const order = messages.length > 0 ? messages[messages.length - 1].order + 1 : 0
-
-            const entry = await db.mutate.createEntry(chatId, name, is_user, order, message)
+            const entry = await db.mutate.createEntry(
+                chatId,
+                name,
+                is_user,
+                order,
+                message,
+                attachments
+            )
+            if (attachments.length > 0 && entry) {
+                const entryId = entry.id
+            }
             if (entry) messages.push(entry)
             set((state) => ({
                 ...state,
-                data: state?.data ? { ...state.data, messages: messages } : state.data,
+                data: state?.data ? { ...state.data, messages: [...messages] } : state.data,
             }))
             return entry?.swipes[0].id
         },
@@ -272,9 +356,9 @@ export namespace Chats {
 
         // returns true if overflowing right swipe, used to trigger generate
         swipe: async (index: number, direction: number) => {
-            const messages = get()?.data?.messages
+            let messages = get()?.data?.messages
             if (!messages) return false
-
+            messages = [...messages]
             const swipe_id = messages[index].swipe_id
             const target = swipe_id + direction
             const limit = messages[index].swipes.length - 1
@@ -282,10 +366,15 @@ export namespace Chats {
             if (target < 0) return false
             if (target > limit) return true
             messages[index].swipe_id = target
-            set((state) => ({
-                ...state,
-                data: state?.data ? { ...state.data, messages: messages } : state.data,
-            }))
+            messages[index] = { ...messages[index] }
+            set((state) => {
+                if (state.data) {
+                    return {
+                        ...state,
+                        data: { ...state.data, messages: messages },
+                    }
+                } else return state
+            })
 
             const entryId = messages[index].id
             await db.mutate.updateEntrySwipeId(entryId, target)
@@ -309,22 +398,40 @@ export namespace Chats {
             return swipe?.id
         },
 
-        getTokenCount: (index: number) => {
+        getTokenCount: async (
+            index: number,
+            options = {
+                lastImageOnly: false,
+                addAttachments: false,
+            }
+        ) => {
             const messages = get()?.data?.messages
             if (!messages) return 0
 
             const swipe_id = messages[index].swipe_id
-            const cached_token_count = messages[index].swipes[swipe_id].token_count
-            if (cached_token_count) return cached_token_count
+
+            const attachmentLength = messages[index].attachments.length
+            const attachmentCount = options.addAttachments
+                ? options.lastImageOnly
+                    ? 1
+                    : attachmentLength
+                : 0
+
+            const { token_count, attachment_count } = messages[index].swipes[swipe_id]
+            if (token_count && attachmentCount === attachment_count) return token_count
             const getTokenCount = Tokenizer.getTokenizer()
 
-            const token_count = getTokenCount(messages[index].swipes[swipe_id].swipe)
-            messages[index].swipes[swipe_id].token_count = token_count
+            const new_token_count = await getTokenCount(
+                messages[index].swipes[swipe_id].swipe,
+                messages[index].attachments.map((item) => item.uri)
+            )
+
+            messages[index].swipes[swipe_id].token_count = new_token_count
             set((state: ChatState) => ({
                 ...state,
                 data: state?.data ? { ...state.data, messages: messages } : state.data,
             }))
-            return token_count
+            return new_token_count
         },
         setBuffer: (newBuffer: OutputBuffer) =>
             set((state: ChatState) => ({ ...state, buffer: newBuffer })),
@@ -393,6 +500,27 @@ export namespace Chats {
                 data: state?.data ? { ...state.data, messages: messages } : state.data,
             }))
         },
+        removeAttachment: async (index: number, attachmentId: number) => {
+            const messages = get()?.data?.messages
+            const message = messages?.[index]
+            if (!messages || !message) return
+            await db.mutate.deleteAttachment(attachmentId)
+            message.attachments = message.attachments.filter((item) => item.id !== attachmentId)
+            messages[index] = message
+            set((state) => ({
+                ...state,
+                data: state?.data ? { ...state.data, messages: [...messages] } : state.data,
+            }))
+        },
+        renameChat: (chatId: number, name: string) => {
+            const data = get().data
+            if (!data) return
+            if (data.id === chatId)
+                set({
+                    data: { ...data, name: name },
+                })
+            db.mutate.renameChat(chatId, name)
+        },
     }))
 
     export namespace db {
@@ -405,6 +533,7 @@ export namespace Chats {
                             orderBy: chatEntries.order,
                             with: {
                                 swipes: true,
+                                attachments: true,
                             },
                         },
                     },
@@ -457,22 +586,42 @@ export namespace Chats {
                 return await database.query.chats.findFirst({ where: eq(chats.id, chatId) })
             }
 
-            export const searchChat = async (query: string, charId: number) => {
-                return await database
+            export const searchChat = async (
+                query: string,
+                charId: number
+            ): Promise<ChatSearchResult[]> => {
+                const swipesWithIndex = sql`
+                    SELECT
+                        ${chatSwipes.id} AS swipeId,
+                        ${chatSwipes.entry_id} AS entryId,
+                        ${chatSwipes.swipe},
+                        ${chatSwipes.send_date} AS sendDate,
+                        ROW_NUMBER() OVER (PARTITION BY ${chatSwipes.entry_id} ORDER BY ${chatSwipes.id}) AS swipeIndex
+                    FROM ${chatSwipes}
+                    `
+
+                const result = (await database
                     .select({
-                        swipeId: chatSwipes.id,
+                        swipeId: sql`swipeId`,
                         chatId: chatEntries.chat_id,
+                        chatEntryId: chatEntries.id,
                         chatName: chats.name,
-                        swipe: chatSwipes.swipe,
-                        sendDate: chatSwipes.send_date,
+                        swipe: sql`swipe`,
+                        sendDate: sql`sendDate`,
                     })
-                    .from(chatSwipes)
-                    .innerJoin(chatEntries, eq(chatSwipes.entry_id, chatEntries.id))
-                    .innerJoin(chats, eq(chatEntries.chat_id, chats.id))
-                    .where(
-                        and(like(chatSwipes.swipe, `%${query}%`), eq(chats.character_id, charId))
+                    .from(chatEntries)
+                    .innerJoin(
+                        sql`(${swipesWithIndex}) AS swi`,
+                        sql`swi.entryId = ${chatEntries.id} AND swi.swipeIndex = ${chatEntries.swipe_id} + 1`
                     )
-                    .limit(999)
+                    .innerJoin(chats, eq(chatEntries.chat_id, chats.id))
+                    .where(and(like(sql`swipe`, `%${query}%`), eq(chats.character_id, charId)))
+                    .orderBy(sql`sendDate`)
+                    .limit(100)) as ChatSearchQueryResult[]
+
+                return result.map((item) => {
+                    return { ...item, sendDate: new Date(item.sendDate * 1000) }
+                })
             }
         }
         export namespace mutate {
@@ -496,28 +645,30 @@ export namespace Chats {
 
                     // custom setting to not generate first mes
                     if (!mmkv.getBoolean(AppSettings.CreateFirstMes)) return chatId
+                    const greetings = [
+                        card.first_mes ?? '',
+                        ...card.alternate_greetings.map((item) => item.greeting),
+                    ].filter((item) => item)
 
-                    const [{ entryId }, ...__] = await tx
-                        .insert(chatEntries)
-                        .values({
-                            chat_id: chatId,
-                            is_user: false,
-                            name: card.name ?? '',
-                            order: 0,
-                        })
-                        .returning({ entryId: chatEntries.id })
+                    if (greetings.length > 0) {
+                        const [{ entryId }, ...__] = await tx
+                            .insert(chatEntries)
+                            .values({
+                                chat_id: chatId,
+                                is_user: false,
+                                name: card.name ?? '',
+                                order: 0,
+                            })
+                            .returning({ entryId: chatEntries.id })
 
-                    await tx.insert(chatSwipes).values({
-                        entry_id: entryId,
-                        swipe: convertToFormatInstruct(replaceMacros(card.first_mes ?? '')),
-                    })
+                        await tx.insert(chatSwipes).values(
+                            greetings.map((item) => ({
+                                entry_id: entryId,
+                                swipe: convertToFormatInstruct(replaceMacros(item)),
+                            }))
+                        )
+                    }
 
-                    card?.alternate_greetings?.forEach(async (data) => {
-                        await tx.insert(chatSwipes).values({
-                            entry_id: entryId,
-                            swipe: convertToFormatInstruct(replaceMacros(data.greeting)),
-                        })
-                    })
                     await Characters.db.mutate.updateModified(charId)
                     return chatId
                 })
@@ -539,7 +690,8 @@ export namespace Chats {
                 name: string,
                 isUser: boolean,
                 order: number,
-                message: string
+                message: string,
+                attachments: string[] = []
             ) => {
                 const [{ entryId }, ...__] = await database
                     .insert(chatEntries)
@@ -553,10 +705,18 @@ export namespace Chats {
                 await database
                     .insert(chatSwipes)
                     .values({ swipe: replaceMacros(message), entry_id: entryId })
+
+                await Promise.all(
+                    attachments.map(async (uri) => {
+                        await createAttachment(entryId, uri)
+                    })
+                )
+
                 const entry = await database.query.chatEntries.findFirst({
                     where: eq(chatEntries.id, entryId),
-                    with: { swipes: true },
+                    with: { swipes: true, attachments: true },
                 })
+
                 await updateChatModified(chatId)
                 return entry
             }
@@ -571,17 +731,15 @@ export namespace Chats {
             }
 
             export const createSwipe = async (entryId: number, message: string) => {
-                const [{ swipeId }, ...__] = await database
+                const [swipe] = await database
                     .insert(chatSwipes)
                     .values({
                         entry_id: entryId,
                         swipe: replaceMacros(message),
                     })
-                    .returning({ swipeId: chatSwipes.id })
+                    .returning()
                 await updateEntryModified(entryId)
-                return await database.query.chatSwipes.findFirst({
-                    where: eq(chatSwipes.id, swipeId),
-                })
+                return swipe
             }
 
             export const updateEntrySwipeId = async (entryId: number, swipeId: number) => {
@@ -610,6 +768,15 @@ export namespace Chats {
 
             export const deleteChatEntry = async (entryId: number) => {
                 await updateEntryModified(entryId)
+                const attachments = await database.query.chatAttachments.findMany({
+                    where: eq(chatAttachments.chat_entry_id, entryId),
+                })
+                await Promise.all(
+                    attachments.map(
+                        async (item) => await deleteAsync(item.uri, { idempotent: true })
+                    )
+                )
+
                 await database.delete(chatEntries).where(eq(chatEntries.id, entryId))
             }
 
@@ -666,13 +833,52 @@ export namespace Chats {
             export const updateUser = async (chatId: number, userId: number) => {
                 await database.update(chats).set({ user_id: userId }).where(eq(chats.id, chatId))
             }
+
+            export const createAttachment = async (entryId: number, uri: string) => {
+                const attachmentId = randomUUID()
+                const fileInfo = await getInfoAsync(uri, {})
+                if (!fileInfo.exists || fileInfo.isDirectory) return
+
+                const name = uri.split('/').pop() ?? 'unknown'
+                const extension = name.split('.').pop()?.toLowerCase()
+                const mimeType = mime.getType(uri)
+                const type = mimeType?.split('/')?.[0]
+                if (!name || !extension || !mimeType || !type || !validExtensionTypes(type)) return
+                const newURI = AppDirectory.Attachments + attachmentId + '.' + extension
+                await copyAsync({
+                    from: uri,
+                    to: newURI,
+                })
+                const [attachment] = await database
+                    .insert(chatAttachments)
+                    .values({
+                        type: type,
+                        name: name,
+                        chat_entry_id: entryId,
+                        uri: newURI,
+                        mime_type: mimeType,
+                    })
+                    .returning()
+                return attachment
+            }
+
+            export const deleteAttachment = async (attachmentId: number) => {
+                await database.delete(chatAttachments).where(eq(chatAttachments.id, attachmentId))
+            }
+
+            export const updateScrollOffset = async (chatId: number, scrollOffset: number) => {
+                await database
+                    .update(chats)
+                    .set({ scroll_offset: scrollOffset })
+                    .where(eq(chats.id, chatId))
+            }
         }
     }
 
     export const useEntryData = (index: number) => {
         // TODO: Investigate if dummyEntry is dangerous
-        const entry = useChatState((state) => state?.data?.messages?.[index] ?? dummyEntry)
-        return entry
+        const entry = useChatState((state) => state?.data?.messages?.[index])
+        return entry ?? dummyEntry
     }
 
     export const useSwipes = () => {
@@ -689,25 +895,28 @@ export namespace Chats {
         const message = useEntryData(index)
         const swipeIndex = message.swipe_id
         const swipesLength = message.swipes.length
-        const { swipe, swipeText, swipeId } = useChatState((state) => ({
-            swipe: state?.data?.messages?.[index]?.swipes[swipeIndex],
-            swipeText: state?.data?.messages?.[index]?.swipes[swipeIndex].swipe,
-            swipeId: state?.data?.messages?.[index]?.swipes[swipeIndex].id,
-        }))
+        const { swipe, swipeText, swipeId } = useChatState(
+            useShallow((state) => ({
+                swipe: state?.data?.messages?.[index]?.swipes[swipeIndex],
+                swipeText: state?.data?.messages?.[index]?.swipes[swipeIndex].swipe,
+                swipeId: state?.data?.messages?.[index]?.swipes[swipeIndex].id,
+            }))
+        )
         return { swipeId, swipe, swipeText, swipeIndex, swipesLength }
     }
 
     export const useChat = () => {
-        const { loadChat, unloadChat, chat, chatId, deleteChat } = Chats.useChatState(
+        const { loadChat, unloadChat, chat, chatId, deleteChat, chatLength } = Chats.useChatState(
             useShallow((state) => ({
                 loadChat: state.load,
                 unloadChat: state.reset,
                 chat: state.data,
                 chatId: state.data?.id,
                 deleteChat: state.delete,
+                chatLength: state.data?.messages.length,
             }))
         )
-        return { chat, loadChat, unloadChat, deleteChat, chatId }
+        return { chat, loadChat, unloadChat, deleteChat, chatId, chatLength }
     }
 
     export const useEntry = () => {
@@ -748,5 +957,11 @@ export namespace Chats {
                 timings: null,
             },
         ],
+        attachments: [],
+    }
+
+    const validExtensionTypes = (type: string) => {
+        //TODO: Add document, eg application/pdf or text/plain
+        return type === 'audio' || type === 'image'
     }
 }

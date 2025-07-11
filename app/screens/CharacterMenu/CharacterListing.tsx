@@ -1,5 +1,6 @@
 import Avatar from '@components/views/Avatar'
 import { AppSettings } from '@lib/constants/GlobalValues'
+import { CharacterSorter } from '@lib/state/CharacterSorter'
 import { Characters, CharInfo } from '@lib/state/Characters'
 import { Chats } from '@lib/state/Chat'
 import { Logger } from '@lib/state/Logger'
@@ -8,37 +9,33 @@ import { getFriendlyTimeStamp } from '@lib/utils/Time'
 import { useRouter } from 'expo-router'
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useMMKVBoolean } from 'react-native-mmkv'
+import { useShallow } from 'zustand/react/shallow'
 
 import CharacterEditPopup from './CharacterEditPopup'
-import { useCharacterListSorter } from './CharacterListHeader'
 
 type CharacterListingProps = {
-    index: number
     character: CharInfo
     nowLoading: boolean
     setNowLoading: (b: boolean) => void
 }
 
 const CharacterListing: React.FC<CharacterListingProps> = ({
-    index,
     character,
     nowLoading,
     setNowLoading,
 }) => {
     const router = useRouter()
     const [showTags, _] = useMMKVBoolean(AppSettings.ShowTags)
-    const { setShowSearch, setTagFilter, tagFilter } = useCharacterListSorter((state) => ({
-        setShowSearch: state.setShowSearch,
-        setTagFilter: state.setTagFilter,
-        tagFilter: state.tagFilter,
-    }))
+    const { setShowSearch, setTagFilter, tagFilter } = CharacterSorter.useSorter()
     const { color } = Theme.useTheme()
     const styles = useStyles()
 
-    const { loadedCharId, setCurrentCard } = Characters.useCharacterCard((state) => ({
-        loadedCharId: state.id,
-        setCurrentCard: state.setCard,
-    }))
+    const { loadedCharId, setCurrentCard } = Characters.useCharacterCard(
+        useShallow((state) => ({
+            loadedCharId: state.id,
+            setCurrentCard: state.setCard,
+        }))
+    )
 
     const { loadChat } = Chats.useChat()
 
@@ -66,7 +63,7 @@ const CharacterListing: React.FC<CharacterListingProps> = ({
 
     const getPreviewText = () => {
         if (!character.latestSwipe || !character.latestName) return '(No Chat Data)'
-        return character.latestName + ':  ' + character.latestSwipe
+        return character.latestName + ':  ' + character.latestSwipe.trim()
     }
 
     return (

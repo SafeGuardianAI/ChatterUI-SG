@@ -1,6 +1,7 @@
 import { db as database } from '@db'
 import { Tokenizer } from '@lib/engine/Tokenizer'
 import { Storage } from '@lib/enums/Storage'
+import { saveStringToDownload } from '@lib/utils/File'
 import {
     characterGreetings,
     characterTags,
@@ -10,8 +11,9 @@ import {
     chats,
     tags,
 } from 'db/schema'
-import { and, desc, eq, inArray, notInArray } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, ilike, inArray, notExists, notInArray, sql } from 'drizzle-orm'
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite'
+import { Asset } from 'expo-asset'
 import { randomUUID } from 'expo-crypto'
 import * as DocumentPicker from 'expo-document-picker'
 import * as FS from 'expo-file-system'
@@ -20,10 +22,10 @@ import { z } from 'zod'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-import { Logger } from './Logger'
+import { replaceMacroBase } from '@lib/utils/Macros'
 import { mmkvStorage } from '../storage/MMKV'
-import { getPngChunkText } from '../utils/PNG'
-import { Asset } from 'expo-asset'
+import { createPNGWithText, getPngChunkText } from '../utils/PNG'
+import { Logger } from './Logger'
 
 export type CharInfo = {
     name: string
@@ -36,7 +38,7 @@ export type CharInfo = {
     latestChat?: number
 }
 
-type CharacterTokenCache = {
+export type CharacterTokenCache = {
     otherName: string
     description_length: number
     examples_length: number
@@ -53,7 +55,7 @@ type CharacterCardState = {
     unloadCard: () => void
     getImage: () => string
     updateImage: (sourceURI: string) => void
-    getCache: (otherName: string) => CharacterTokenCache
+    getCache: (otherName: string) => Promise<CharacterTokenCache>
 }
 
 export type CharacterCardData = Awaited<ReturnType<typeof Characters.db.query.cardQuery>>
@@ -100,7 +102,7 @@ export namespace Characters {
                     card.image_id = imageID
                     set((state) => ({ ...state, card: card }))
                 },
-                getCache: (userName: string) => {
+                getCache: async (userName: string) => {
                     const cache = get().tokenCache
                     if (cache && cache?.otherName === userName) return cache
 
@@ -122,10 +124,10 @@ export namespace Characters {
 
                     const newCache: CharacterTokenCache = {
                         otherName: userName,
-                        description_length: getTokenCount(description),
-                        examples_length: getTokenCount(examples),
-                        personality_length: getTokenCount(personality),
-                        scenario_length: getTokenCount(scenario),
+                        description_length: await getTokenCount(description),
+                        examples_length: await getTokenCount(examples),
+                        personality_length: await getTokenCount(personality),
+                        scenario_length: await getTokenCount(scenario),
                     }
 
                     set((state) => ({ ...state, tokenCache: newCache }))
@@ -187,7 +189,7 @@ export namespace Characters {
             card.image_id = imageID
             set((state) => ({ ...state, card: card }))
         },
-        getCache: (charName: string) => {
+        getCache: async (charName: string) => {
             const cache = get().tokenCache
             const card = get().card
             if (cache?.otherName && cache.otherName === useUserCard.getState().card?.name)
@@ -210,10 +212,10 @@ export namespace Characters {
 
             const newCache = {
                 otherName: charName,
-                description_length: getTokenCount(description),
-                examples_length: getTokenCount(examples),
-                personality_length: getTokenCount(personality),
-                scenario_length: getTokenCount(scenario),
+                description_length: await getTokenCount(description),
+                examples_length: await getTokenCount(examples),
+                personality_length: await getTokenCount(personality),
+                scenario_length: await getTokenCount(scenario),
             }
             set((state) => ({ ...state, tokenCache: newCache }))
             return newCache
@@ -354,6 +356,104 @@ export namespace Characters {
                     },
                     where: (characters, { eq }) => eq(characters.type, type),
                     orderBy: orderBy === 'id' ? characters.id : desc(characters.last_modified),
+                })
+            }
+
+            export const cardListQueryWindow = (
+                type: 'character' | 'user',
+                orderBy: 'name' | 'modified' = 'modified',
+                direction: 'desc' | 'asc' = 'desc',
+                limit = 20,
+                offset = 0,
+                searchFilter: string = '',
+                searchTags: string[] = [],
+                hiddenTags: string[] = []
+            ) => {
+                const dir = direction === 'asc' ? asc : desc
+                return database.query.characters.findMany({
+                    columns: {
+                        id: true,
+                        name: true,
+                        image_id: true,
+                        last_modified: true,
+                    },
+                    where: (characters) => {
+                        const base = eq(characters.type, type)
+                        const search = searchFilter
+                            ? ilike(characters.name, `${searchFilter.trim().toLocaleLowerCase()}`)
+                            : undefined
+                        const hidden =
+                            hiddenTags.length > 0
+                                ? notExists(
+                                      database
+                                          .select()
+                                          .from(characterTags)
+                                          .innerJoin(tags, eq(characterTags.tag_id, tags.id))
+                                          .where(
+                                              and(
+                                                  eq(characterTags.character_id, characters.id),
+                                                  inArray(tags.tag, hiddenTags)
+                                              )
+                                          )
+                                  )
+                                : undefined
+                        const filteredTags =
+                            searchTags.length > 0
+                                ? gte(
+                                      database
+                                          .select({ count: sql<number>`count(*)` })
+                                          .from(characterTags)
+                                          .innerJoin(tags, eq(characterTags.tag_id, tags.id))
+                                          .where(
+                                              and(
+                                                  eq(characterTags.character_id, characters.id),
+                                                  inArray(tags.tag, searchTags)
+                                              )
+                                          ),
+                                      searchTags.length
+                                  )
+                                : undefined
+
+                        return and(base, search, hidden, filteredTags)
+                    },
+                    with: {
+                        tags: {
+                            columns: {},
+                            with: {
+                                tag: true,
+                            },
+                        },
+                        chats: {
+                            columns: {
+                                id: true,
+                            },
+                            limit: 1,
+                            orderBy: desc(chats.last_modified),
+                            with: {
+                                messages: {
+                                    columns: {
+                                        id: true,
+                                        name: true,
+                                    },
+                                    limit: 1,
+                                    orderBy: desc(chatEntries.id),
+                                    with: {
+                                        swipes: {
+                                            columns: {
+                                                swipe: true,
+                                            },
+                                            orderBy: desc(chatSwipes.id),
+                                            limit: 1,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    orderBy:
+                        orderBy === 'name' ? dir(characters.name) : dir(characters.last_modified),
+                    limit: limit,
+                    offset: offset,
                 })
             }
 
@@ -530,10 +630,7 @@ export namespace Characters {
             }
 
             export const createCharacter = async (card: CharacterCardV2, imageuri: string = '') => {
-                // TODO : Extract CharacterBook value to Lorebooks, CharacterLorebooks
                 const { data } = card
-                // provide warning ?
-                // if (data.character_book) { console.log(warn) }
                 const image_id = await database.transaction(async (tx) => {
                     try {
                         const [{ id, image_id }, ..._] = await tx
@@ -758,6 +855,26 @@ export namespace Characters {
         Logger.info('Imported Character: ' + character.data.name)
     }
 
+    export const exportCharacter = async (id: number) => {
+        const dbcard = await db.query.card(id)
+        if (!dbcard) {
+            Logger.error('Exported card does not exist!')
+            return
+        }
+        const imagePath = getImageDir(dbcard.image_id)
+        // name can be empty string, should at least have something
+        const exportedFileName = (dbcard.name ?? 'Character') + '.png'
+        const cardString = JSON.stringify(convertDBDataToCV2(dbcard))
+        const fileData = await FS.readAsStringAsync(imagePath, {
+            encoding: FS.EncodingType.Base64,
+        }).catch((e) => {
+            Logger.error('Could not get file data for export: ' + JSON.stringify(e))
+        })
+        if (!fileData) return
+        const exportData = createPNGWithText(cardString, fileData)
+        await saveStringToDownload(exportData, exportedFileName, 'base64')
+    }
+
     export const importCharacterFromRemote = async (text: string) => {
         // UUID standard RFC 4122, only used by pyg for now
         const uuidRegex =
@@ -802,11 +919,11 @@ export namespace Characters {
     export const createDefaultCard = async () => {
         const filename = 'aibot'
         const pngName = filename + '.png'
-        const resName = filename + '.raw'
         const cardDefaultDir = `${FS.documentDirectory}appAssets/${pngName}`
 
         const fileinfo = await FS.getInfoAsync(cardDefaultDir)
         if (!fileinfo.exists) {
+            Logger.info('Importing default card.')
             const [asset] = await Asset.loadAsync(require('./../../assets/models/aibot.png'))
             await asset.downloadAsync()
             if (asset.localUri) await FS.copyAsync({ from: asset.localUri, to: cardDefaultDir })
@@ -908,22 +1025,15 @@ type Macro = {
     value: string
 }
 
-const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-
 export const replaceMacros = (text: string) => {
     if (text === undefined) return ''
-    let newtext: string = text
+    let newText: string = text
     const charName = Characters.useCharacterCard.getState().card?.name ?? ''
     const userName = Characters.useUserCard.getState().card?.name ?? ''
-    const time = new Date()
     const rules: Macro[] = [
         { macro: '{{user}}', value: userName },
         { macro: '{{char}}', value: charName },
-        { macro: '{{time}}', value: time.toLocaleTimeString() },
-        { macro: '{{date}}', value: time.toLocaleDateString() },
-        { macro: '{{day}}', value: weekday[time.getDay()] },
     ]
-    for (const rule of rules) newtext = newtext.replaceAll(rule.macro, rule.value)
-    return newtext
+    for (const rule of rules) newText = replaceMacroBase(newText, { extraMacros: rules })
+    return newText
 }
-

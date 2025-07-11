@@ -1,12 +1,12 @@
 import { Storage } from '@lib/enums/Storage'
 import { Logger } from '@lib/state/Logger'
 import { mmkvStorage } from '@lib/storage/MMKV'
-import { setBackgroundColorAsync } from 'expo-system-ui'
 import { useMemo } from 'react'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 import { DefaultColorSchemes, ThemeColor, themeColorSchemaV1 } from './ThemeColor'
+import { Appearance } from 'react-native'
 
 interface ColorStateProps {
     customColors: ThemeColor[]
@@ -25,9 +25,11 @@ export namespace Theme {
     export const useColorState = create<ColorStateProps>()(
         persist(
             (set, get) => ({
-                color: DefaultColorSchemes.lavenderDark,
+                color:
+                    Appearance.getColorScheme() === 'dark'
+                        ? DefaultColorSchemes.emergencyDark
+                        : DefaultColorSchemes.emergencyLight,
                 setColor: (color) => {
-                    setBackgroundColorAsync(color.neutral._100)
                     set((state) => ({ ...state, color: color }))
                 },
                 customColors: [],

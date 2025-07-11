@@ -11,6 +11,7 @@ import { getDocumentAsync } from 'expo-document-picker'
 import { EncodingType, readAsStringAsync } from 'expo-file-system'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { useShallow } from 'zustand/react/shallow'
 
 export type SamplerConfig = {
     name: string
@@ -69,14 +70,10 @@ export namespace SamplersManager {
                     const configs = get().configList
                     const index = get().currentConfigIndex
                     configs[index] = config
-                    set((state) => ({
-                        ...state,
-                        configList: configs,
-                    }))
+                    set({ configList: [...configs] })
                 },
                 fixConfigs: () => {
                     set((state) => ({
-                        ...state,
                         configList: state.configList.map((item) => ({
                             name: item.name,
                             data: fixSamplerConfig(item.data),
@@ -108,15 +105,17 @@ export namespace SamplersManager {
             changeConfig,
             updateCurrentConfig,
             configList,
-        } = useSamplerState((state) => ({
-            currentPresetIndex: state.currentConfigIndex,
-            samplerConfigs: state.configList,
-            addSamplerConfig: state.addSamplerConfig,
-            deleteSamplerConfig: state.deleteSamplerConfig,
-            changeConfig: state.setConfig,
-            updateCurrentConfig: state.updateCurrentConfig,
-            configList: state.configList,
-        }))
+        } = useSamplerState(
+            useShallow((state) => ({
+                currentPresetIndex: state.currentConfigIndex,
+                samplerConfigs: state.configList,
+                addSamplerConfig: state.addSamplerConfig,
+                deleteSamplerConfig: state.deleteSamplerConfig,
+                changeConfig: state.setConfig,
+                updateCurrentConfig: state.updateCurrentConfig,
+                configList: state.configList,
+            }))
+        )
 
         const currentConfig = samplerConfigs[currentConfigIndex]
 

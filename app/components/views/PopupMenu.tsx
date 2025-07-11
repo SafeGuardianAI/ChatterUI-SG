@@ -2,7 +2,15 @@ import { AntDesign } from '@expo/vector-icons'
 import { Theme } from '@lib/theme/ThemeManager'
 import { useFocusEffect } from 'expo-router'
 import React, { ReactNode, useRef, useState } from 'react'
-import { StyleSheet, TouchableOpacity, Text, BackHandler, TextStyle } from 'react-native'
+import {
+    StyleSheet,
+    TouchableOpacity,
+    Text,
+    BackHandler,
+    TextStyle,
+    ViewStyle,
+    I18nManager,
+} from 'react-native'
 import {
     Menu,
     MenuOption,
@@ -34,6 +42,7 @@ type PopupMenuProps = {
     options: MenuOptionProp[]
     placement?: 'top' | 'right' | 'bottom' | 'left' | 'auto'
     children?: ReactNode
+    menuCustomStyle?: ViewStyle
 }
 
 const PopupOption: React.FC<PopupOptionProps> = ({
@@ -71,6 +80,7 @@ const PopupMenu: React.FC<PopupMenuProps> = ({
     icon,
     iconSize = 26,
     style = {},
+    menuCustomStyle = {},
     options,
     children,
     placement = 'left',
@@ -88,19 +98,26 @@ const PopupMenu: React.FC<PopupMenuProps> = ({
     }
 
     useFocusEffect(() => {
-        BackHandler.removeEventListener('hardwareBackPress', backAction)
         const handler = BackHandler.addEventListener('hardwareBackPress', backAction)
         return () => handler.remove()
     })
+
+    const switchRTL = () => {
+        if (!I18nManager.isRTL) return placement
+        if (placement === 'left') return 'right'
+        if (placement === 'right') return 'left'
+        return placement
+    }
 
     return (
         <Menu
             ref={menuRef}
             onOpen={() => setShowMenu(true)}
             onClose={() => setShowMenu(false)}
+            style={menuCustomStyle}
             renderer={Popover}
             rendererProps={{
-                placement: placement,
+                placement: switchRTL(),
                 anchorStyle: styles.anchor,
                 openAnimationDuration: 150,
                 closeAnimationDuration: 0,
@@ -134,6 +151,8 @@ const useMenuStyle = (): MenuOptionsCustomStyle => {
             backgroundColor: color.neutral._200,
             padding: spacing.sm,
             borderRadius: borderRadius.l,
+            borderWidth: 1,
+            borderColor: color.neutral._300,
         },
         optionsWrapper: {
             backgroundColor: color.neutral._200,
@@ -146,7 +165,7 @@ const useStyles = () => {
 
     return StyleSheet.create({
         anchor: {
-            backgroundColor: color.primary._300,
+            backgroundColor: color.neutral._300,
             padding: 4,
         },
 

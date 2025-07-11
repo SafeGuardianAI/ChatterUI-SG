@@ -4,7 +4,6 @@ import { Characters } from '@lib/state/Characters'
 import { Logger } from '@lib/state/Logger'
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
-import { View } from 'react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 type CharacterNewMenuProps = {
@@ -39,7 +38,7 @@ const CharacterNewMenu: React.FC<CharacterNewMenuProps> = ({ nowLoading, setNowL
     }
 
     return (
-        <View>
+        <>
             <TextBoxModal
                 booleans={[showNewChar, setShowNewChar]}
                 title="Create New Character"
@@ -85,9 +84,8 @@ const CharacterNewMenu: React.FC<CharacterNewMenuProps> = ({ nowLoading, setNowL
                 ]}
                 placement="bottom"
             />
-        </View>
+        </>
     )
 }
 
 export default CharacterNewMenu
-

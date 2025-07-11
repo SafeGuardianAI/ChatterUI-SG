@@ -1,4 +1,3 @@
-import Drawer from '@components/views/Drawer'
 import { Chats } from '@lib/state/Chat'
 import { Theme } from '@lib/theme/ThemeManager'
 import { getFriendlyTimeStamp } from '@lib/utils/Time'
@@ -7,7 +6,7 @@ import { Text, TouchableOpacity, View } from 'react-native'
 type ChatDrawerSearchItemProps = {
     query: string
     item: Awaited<ReturnType<typeof Chats.db.query.searchChat>>[0]
-    onLoad: (id: number) => void
+    onLoad: (id: number, setOffset?: { type: 'index' | 'entryId'; value: number }) => void
 }
 
 const ChatDrawerSearchItem: React.FC<ChatDrawerSearchItemProps> = ({ item, onLoad, query }) => {
@@ -17,10 +16,11 @@ const ChatDrawerSearchItem: React.FC<ChatDrawerSearchItemProps> = ({ item, onLoa
 
     return (
         <TouchableOpacity
-            onPress={() => onLoad(item.chatId)}
+            onPress={() => onLoad(item.chatId, { type: 'entryId', value: item.chatEntryId })}
             style={{
                 paddingHorizontal: spacing.m,
                 paddingVertical: spacing.m,
+                marginBottom: spacing.s,
                 rowGap: 2,
             }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>

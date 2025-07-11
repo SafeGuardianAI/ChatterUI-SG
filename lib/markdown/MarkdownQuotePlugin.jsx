@@ -1,59 +1,74 @@
 module.exports = function doubleQuotePlugin(md) {
-    // Define a new rule to inline various double-quote types
-    md.core.ruler.push('double_quote', function (state) {
-        if (state.env.inDoubleQuote) return
-        // Define a regex to match double quotes, including curly ones
-        const doubleQuoteRegex = /([“”"])(.*?)([“”"])/g
-
-        // Loop through all tokens
-        for (let i = 0; i < state.tokens.length; i++) {
-            const token = state.tokens[i]
-
-            if (token.type === 'inline' && doubleQuoteRegex.test(token.content)) {
-                const parts = []
-                let lastIndex = 0
-                // Use the regex to find double-quoted segments
-                token.content.replace(
-                    doubleQuoteRegex,
-                    (match, openQuote, text, closeQuote, offset) => {
-                        // Push the text before the match as a plain text token
-                        if (offset > lastIndex) {
-                            parts.push(
-                                ...md.parseInline(token.content.slice(lastIndex, offset), state.env)
-                            )
+    md.core.ruler.after('inline', 'double_quote', function (state) {
+        for (const blockToken of state.tokens) {
+            if (blockToken.type !== 'inline' || !blockToken.children) continue
+            const children = blockToken.children
+            const newChildren = []
+            let buffer = []
+            let insideQuote = false
+            for (let i = 0; i < children.length; i++) {
+                const token = children[i]
+                if (token.type === 'text') {
+                    const content = token.content
+                    let start = 0
+                    for (let j = 0; j < content.length; j++) {
+                        if (content[j] === '"') {
+                            // Add text before quote
+                            if (j > start) {
+                                const before = new state.Token('text', '', 0)
+                                before.content = content.slice(start, j)
+                                if (insideQuote) {
+                                    buffer.push(before)
+                                } else {
+                                    newChildren.push(before)
+                                }
+                            }
+                            // Toggle quote state
+                            if (!insideQuote) {
+                                // Start quote
+                                buffer = []
+                                buffer.push(
+                                    Object.assign(new state.Token('text', '', 0), { content: '"' })
+                                )
+                                insideQuote = true
+                            } else {
+                                // End quote
+                                buffer.push(
+                                    Object.assign(new state.Token('text', '', 0), { content: '"' })
+                                )
+                                const dqToken = new state.Token('double_quote', '', 0)
+                                dqToken.children = buffer
+                                newChildren.push(dqToken)
+                                buffer = []
+                                insideQuote = false
+                            }
+                            start = j + 1
                         }
-
-                        // Push a double-quote token for the matched quote and its content
-
-                        parts.push({
-                            type: 'double_quote',
-                            children: [
-                                { type: 'text', content: `${openQuote}` },
-                                ...md.parseInline(text, state.env),
-                                { type: 'text', content: `${closeQuote}` },
-                            ],
-                        })
-
-                        lastIndex = offset + match.length
                     }
-                )
-
-                // Add any remaining text after the last match
-                if (lastIndex < token.content.length) {
-                    parts.push(...md.parseInline(token.content.slice(lastIndex), state.env))
+                    // Remaining text after last quote
+                    if (start < content.length) {
+                        const remainder = new state.Token('text', '', 0)
+                        remainder.content = content.slice(start)
+                        if (insideQuote) {
+                            buffer.push(remainder)
+                        } else {
+                            newChildren.push(remainder)
+                        }
+                    }
+                } else {
+                    if (insideQuote) {
+                        buffer.push(token)
+                    } else {
+                        newChildren.push(token)
+                    }
                 }
-                // Convert parts into tokens and replace the child tokens
-                state.tokens.splice(
-                    i,
-                    1,
-                    ...parts.map((part) => {
-                        const newToken = new state.Token(part.type, '', 0)
-                        newToken.content = part.content
-                        newToken.children = part.children
-                        return newToken
-                    })
-                )
             }
+            // If unclosed quote, dump buffer as-is
+            if (insideQuote) {
+                newChildren.push(...buffer)
+            }
+            blockToken.children = newChildren
         }
+        return true
     })
 }

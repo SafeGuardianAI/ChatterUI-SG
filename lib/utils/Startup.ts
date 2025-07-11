@@ -1,8 +1,15 @@
 import { Model } from '@lib/engine/Local/Model'
+import { Tokenizer } from '@lib/engine/Tokenizer'
+import { setupNotifications } from '@lib/notifications/Notifications'
 import { useAppModeState } from '@lib/state/AppMode'
 import { Instructs } from '@lib/state/Instructs'
 import { SamplersManager } from '@lib/state/SamplerState'
 import { useTTSState } from '@lib/state/TTS'
+<<<<<<< HEAD
+=======
+import { getThreads } from '@vali98/react-native-cpu-info'
+
+>>>>>>> 466189f4b6895fe6260e842a8c961e9902000a41
 import {
     convertJsonSchemaToGrammar,
     getCpuFeatures,
@@ -18,11 +25,9 @@ import {
     readDirectoryAsync,
 } from 'expo-file-system'
 import { router } from 'expo-router'
-import { setBackgroundColorAsync } from 'expo-system-ui'
+import { setBackgroundColorAsync as setUIBackgroundColor } from 'expo-system-ui'
 import { z } from 'zod'
 
-import { AppDirectory } from './File'
-import { lockScreenOrientation } from './Screen'
 import { AppSettings, AppSettingsDefault, Global } from '../constants/GlobalValues'
 import { Llama } from '../engine/Local/LlamaLocal'
 import { Characters } from '../state/Characters'
@@ -30,6 +35,9 @@ import { Chats } from '../state/Chat'
 import { Logger } from '../state/Logger'
 import { mmkv } from '../storage/MMKV'
 import { Theme } from '../theme/ThemeManager'
+import { AppDirectory } from './File'
+import { patchAndroidText } from './PatchText'
+import { lockScreenOrientation } from './Screen'
 
 export const loadChatOnInit = async () => {
     if (!mmkv.getBoolean(AppSettings.ChatOnStartup)) return
@@ -176,7 +184,7 @@ const createDefaultUserData = async () => {
     Characters.useUserCard.getState().setCard(id)
 }
 
-const setDefaultCharacter = async () => {
+const setDefaultUser = async () => {
     const userList = await Characters.db.query.cardList('user')
     if (!userList) {
         Logger.error(
@@ -202,6 +210,19 @@ const setDefaultInstruct = () => {
     })
 }
 
+const setCPUThreads = () => {
+    const threads = mmkv.getNumber(Global.CPUThreads)
+    if (threads) return
+    let newThreads = 8
+    try {
+        newThreads = getThreads()
+    } catch (e) {
+        Logger.error('Failed to set CPU Threads: ' + e)
+    }
+    Logger.info('Setting CPU Threads to ' + newThreads)
+    mmkv.set(Global.CPUThreads, newThreads)
+}
+
 export const startupApp = () => {
     console.log('[APP STARTED]: T1APT')
     // DEV: Needed for Reset
@@ -211,8 +232,11 @@ export const startupApp = () => {
     // Sets default preferences
     setAppDefaultSettings()
     generateDefaultDirectories()
-    setDefaultCharacter()
+    setDefaultUser()
     setDefaultInstruct()
+
+    // setup notifications
+    setupNotifications()
 
     // Initialize the default card
     createDefaultCard()
@@ -220,9 +244,16 @@ export const startupApp = () => {
     // get fp16, i8mm and dotprod data
     setCPUFeatures()
 
+    // set cpu thread count
+    setCPUThreads()
+
+    // patch for Bold Text bug
+    // refer to https://github.com/Vali-98/ChatterUI/issues/161
+    patchAndroidText()
+
     // Local Model Data in case external models are deleted
     Model.verifyModelList()
-
+    Tokenizer.useDefaultTokenizer.getState().loadModel()
     // migrations for old versions
     migrateModelData_0_7_10_to_0_8_0()
     migrateModelData_0_8_4_to_0_8_5()
@@ -231,6 +262,9 @@ export const startupApp = () => {
     migrateAppMode_0_8_5_to_0_8_6()
 
     lockScreenOrientation()
-    setBackgroundColorAsync(Theme.useColorState.getState().color.neutral._100)
+
+    const backgroundColor = Theme.useColorState.getState().color.neutral._100
+    setUIBackgroundColor(backgroundColor)
+
     Logger.info('Resetting state values for startup.')
 }

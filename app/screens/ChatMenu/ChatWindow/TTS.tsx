@@ -1,9 +1,10 @@
-import { FontAwesome } from '@expo/vector-icons'
+import { Octicons } from '@expo/vector-icons'
 import { Chats, useInference } from '@lib/state/Chat'
 import { Logger } from '@lib/state/Logger'
 import { useTTS } from '@lib/state/TTS'
 import { Theme } from '@lib/theme/ThemeManager'
 import { TouchableOpacity, View } from 'react-native'
+import Animated, { ZoomIn, ZoomOut } from 'react-native-reanimated'
 
 type TTSProps = {
     index: number
@@ -11,11 +12,10 @@ type TTSProps = {
 
 const TTS: React.FC<TTSProps> = ({ index }) => {
     const { color } = Theme.useTheme()
-    const { startTTS, activeChatIndex, stopTTS } = useTTS()
+    const { startTTS, activeChatIndex, stopTTS, enabled } = useTTS()
     const { swipeText } = Chats.useSwipeData(index)
     const nowGenerating = useInference((state) => state.nowGenerating)
     const isSpeaking = index === activeChatIndex
-
     const handleSpeak = async () => {
         Logger.info('Starting TTS')
         swipeText && (await startTTS(swipeText, index))
@@ -26,23 +26,29 @@ const TTS: React.FC<TTSProps> = ({ index }) => {
         await stopTTS()
     }
 
-    return (
-        <View style={{ paddingTop: 4 }}>
-            {isSpeaking ? (
-                <TouchableOpacity onPress={handleStopSpeaking}>
-                    <FontAwesome name="stop" size={20} color={color.error._500} />
-                </TouchableOpacity>
-            ) : (
-                <TouchableOpacity onPress={handleSpeak} disabled={nowGenerating}>
-                    <FontAwesome
-                        name="volume-down"
-                        size={28}
-                        color={nowGenerating ? color.text._600 : color.primary._400}
-                    />
-                </TouchableOpacity>
-            )}
-        </View>
-    )
+    if (enabled)
+        return (
+            <View>
+                {isSpeaking && (
+                    <Animated.View entering={ZoomIn.duration(200)} exiting={ZoomOut.duration(200)}>
+                        <TouchableOpacity onPress={handleStopSpeaking}>
+                            <Octicons name="mute" size={24} color={color.error._500} />
+                        </TouchableOpacity>
+                    </Animated.View>
+                )}
+                {!isSpeaking && (
+                    <Animated.View entering={ZoomIn.duration(200)} exiting={ZoomOut.duration(200)}>
+                        <TouchableOpacity onPress={handleSpeak} disabled={nowGenerating}>
+                            <Octicons
+                                name="unmute"
+                                size={24}
+                                color={nowGenerating ? color.text._600 : color.primary._400}
+                            />
+                        </TouchableOpacity>
+                    </Animated.View>
+                )}
+            </View>
+        )
 }
 
 export default TTS

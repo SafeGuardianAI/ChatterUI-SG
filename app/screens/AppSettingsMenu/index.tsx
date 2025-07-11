@@ -1,22 +1,23 @@
 import HeaderTitle from '@components/views/HeaderTitle'
 import { Theme } from '@lib/theme/ThemeManager'
 import React from 'react'
-import { ScrollView, View } from 'react-native'
+import { View } from 'react-native'
 
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller'
 import CharacterSettings from './CharacterSettings'
 import ChatSettings from './ChatSettings'
 import DatabaseSettings from './DatabaseSettings'
 import GeneratingSettings from './GeneratingSettings'
+import NotificationSettings from './NotificationSettings'
 import ScreenSettings from './ScreenSettings'
 import SecuritySettings from './SecuritySettings'
 import StyleSettings from './StyleSettings'
-import NotificationSettings from './NotificationSettings'
 
 const AppSettingsMenu = () => {
     const { spacing } = Theme.useTheme()
 
     return (
-        <ScrollView
+        <KeyboardAwareScrollView
             style={{
                 marginVertical: spacing.xl2,
                 paddingHorizontal: spacing.xl2,
@@ -35,9 +36,8 @@ const AppSettingsMenu = () => {
             <SecuritySettings />
 
             <View style={{ paddingVertical: spacing.xl3 }} />
-        </ScrollView>
+        </KeyboardAwareScrollView>
     )
 }
 
 export default AppSettingsMenu
-

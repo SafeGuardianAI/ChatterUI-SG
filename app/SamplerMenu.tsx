@@ -3,13 +3,12 @@ import ThemedCheckbox from '@components/input/ThemedCheckbox'
 import ThemedSlider from '@components/input/ThemedSlider'
 import ThemedTextInput from '@components/input/ThemedTextInput'
 import Alert from '@components/views/Alert'
-import FadeDownView from '@components/views/FadeDownView'
 import HeaderButton from '@components/views/HeaderButton'
 import HeaderTitle from '@components/views/HeaderTitle'
 import PopupMenu from '@components/views/PopupMenu'
 import TextBoxModal from '@components/views/TextBoxModal'
 import { Samplers } from '@lib/constants/SamplerData'
-import { APISampler } from '@lib/engine/API/APIBuilder.types'
+import { APIConfiguration, APISampler } from '@lib/engine/API/APIBuilder.types'
 import { APIState as APIStateNew } from '@lib/engine/API/APIManagerState'
 import { localSamplerData } from '@lib/engine/LocalInference'
 import { useAppMode } from '@lib/state/AppMode'
@@ -19,6 +18,9 @@ import { Theme } from '@lib/theme/ThemeManager'
 import { saveStringToDownload } from '@lib/utils/File'
 import { useState } from 'react'
 import { ScrollView, StyleSheet, Text } from 'react-native'
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { useShallow } from 'zustand/react/shallow'
 
 const SamplerMenu = () => {
     const styles = useStyles()
@@ -36,17 +38,19 @@ const SamplerMenu = () => {
         configList,
     } = SamplersManager.useSamplers()
 
-    const { apiValues, activeIndex, getTemplates } = APIStateNew.useAPIState((state) => ({
-        apiValues: state.values,
-        activeIndex: state.activeIndex,
-        getTemplates: state.getTemplates,
-    }))
+    const { apiValues, activeIndex, getTemplates } = APIStateNew.useAPIState(
+        useShallow((state) => ({
+            apiValues: state.values,
+            activeIndex: state.activeIndex,
+            getTemplates: state.getTemplates,
+        }))
+    )
 
     const getSamplerList = (): APISampler[] => {
         if (appMode === 'local') return localSamplerData
         if (activeIndex !== -1) {
             const template = getTemplates().find(
-                (item) => item.name === apiValues[activeIndex].configName
+                (item: APIConfiguration) => item.name === apiValues[activeIndex].configName
             )
             if (!template) return []
             return template.request.samplerFields
@@ -135,7 +139,7 @@ const SamplerMenu = () => {
     )
 
     return (
-        <FadeDownView style={{ flex: 1 }}>
+        <SafeAreaView edges={['bottom']} style={{ flex: 1 }} key={currentConfig.name}>
             <TextBoxModal
                 booleans={[showNewSampler, setShowNewSampler]}
                 onConfirm={(text: string) => {
@@ -167,7 +171,7 @@ const SamplerMenu = () => {
                 labelExtractor={(item) => item.name}
             />
 
-            <ScrollView contentContainerStyle={styles.scrollContainer}>
+            <KeyboardAwareScrollView contentContainerStyle={styles.scrollContainer}>
                 {currentConfig &&
                     getSamplerList().map((item, index) => {
                         const samplerItem = Samplers?.[item.samplerID]
@@ -245,8 +249,8 @@ const SamplerMenu = () => {
                                 )
                         }
                     })}
-            </ScrollView>
-        </FadeDownView>
+            </KeyboardAwareScrollView>
+        </SafeAreaView>
     )
 }
 

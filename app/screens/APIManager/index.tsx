@@ -2,39 +2,44 @@ import ThemedButton from '@components/buttons/ThemedButton'
 import { AntDesign, Ionicons } from '@expo/vector-icons'
 import { APIState } from '@lib/engine/API/APIManagerState'
 import { Theme } from '@lib/theme/ThemeManager'
-import { Stack, useRouter } from 'expo-router'
+import { useRouter } from 'expo-router'
 import { FlatList, Pressable, Text, View } from 'react-native'
+import { useShallow } from 'zustand/react/shallow'
 
+import HeaderButton from '@components/views/HeaderButton'
+import HeaderTitle from '@components/views/HeaderTitle'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import APIValueItem from './APIValueItem'
 
 const APIManager = () => {
     // eslint-disable-next-line react-compiler/react-compiler
     'use no memo'
-    const { apiValues } = APIState.useAPIState((state) => ({
-        apiValues: state.values,
-    }))
+    const { apiValues } = APIState.useAPIState(
+        useShallow((state) => ({
+            apiValues: state.values,
+        }))
+    )
     const { color, spacing } = Theme.useTheme()
 
     const router = useRouter()
     return (
-        <View
+        <SafeAreaView
+            edges={['bottom']}
             style={{
                 paddingTop: spacing.xl,
                 paddingBottom: spacing.xl2,
                 flex: 1,
             }}>
-            <Stack.Screen
-                options={{
-                    title: 'API Manager',
-                    headerRight: () => (
-                        <Pressable
-                            onPressIn={() => {
-                                router.push('/screens/APIManager/TemplateManager')
-                            }}>
-                            <AntDesign name="setting" color={color.text._400} size={26} />
-                        </Pressable>
-                    ),
-                }}
+            <HeaderTitle title="API Manager" />
+            <HeaderButton
+                headerRight={() => (
+                    <Pressable
+                        onPressIn={() => {
+                            router.push('/screens/APIManager/TemplateManager')
+                        }}>
+                        <AntDesign name="file1" color={color.text._400} size={26} />
+                    </Pressable>
+                )}
             />
             {apiValues.length > 0 && (
                 <FlatList
@@ -71,7 +76,7 @@ const APIManager = () => {
                 onPress={() => router.push('/screens/APIManager/AddAPI')}
                 label="Add Connection"
             />
-        </View>
+        </SafeAreaView>
     )
 }
 

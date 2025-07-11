@@ -7,6 +7,7 @@ import { Logger } from '@lib/state/Logger'
 import { saveStringToDownload } from '@lib/utils/File'
 import React, { useState } from 'react'
 import { View } from 'react-native'
+import { useShallow } from 'zustand/react/shallow'
 
 type ChatEditPopupProps = {
     item: Awaited<ReturnType<typeof Chats.db.query.chatListQuery>>[0]
@@ -15,15 +16,19 @@ type ChatEditPopupProps = {
 const ChatEditPopup: React.FC<ChatEditPopupProps> = ({ item }) => {
     const [showRename, setShowRename] = useState<boolean>(false)
 
-    const { charName, charId } = Characters.useCharacterCard((state) => ({
-        charId: state.id,
-        charName: state.card?.name ?? 'Unknown',
-    }))
+    const { charName, charId } = Characters.useCharacterCard(
+        useShallow((state) => ({
+            charId: state.id,
+            charName: state.card?.name ?? 'Unknown',
+        }))
+    )
 
-    const { userId, userName } = Characters.useUserCard((state) => ({
-        userId: state.id,
-        userName: state.card?.name,
-    }))
+    const { userId, userName } = Characters.useUserCard(
+        useShallow((state) => ({
+            userId: state.id,
+            userName: state.card?.name,
+        }))
+    )
 
     const { deleteChat, loadChat, chatId, unloadChat } = Chats.useChat()
 
@@ -86,7 +91,7 @@ const ChatEditPopup: React.FC<ChatEditPopupProps> = ({ item }) => {
             return
         }
         await Chats.db.mutate.updateUser(item.id, userId)
-        Logger.errorToast(`Linked to User: ${userName}`)
+        Logger.infoToast(`Linked to User: ${userName}`)
     }
 
     return (

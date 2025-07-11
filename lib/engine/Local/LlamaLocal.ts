@@ -1,13 +1,19 @@
 import { Storage } from '@lib/enums/Storage'
 import { AppDirectory, readableFileSize } from '@lib/utils/File'
-import { CompletionParams, ContextParams, initLlama, LlamaContext } from 'cui-llama.rn'
+import {
+    CompletionParams,
+    ContextParams,
+    initLlama,
+    LlamaContext,
+    RNLLAMA_MTMD_DEFAULT_MEDIA_MARKER,
+} from 'cui-llama.rn'
 import { ModelDataType } from 'db/schema'
 import { getInfoAsync, writeAsStringAsync } from 'expo-file-system'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 import { checkGGMLDeprecated } from './GGML'
-import { KV } from './Model'
+import { KV, Model } from './Model'
 import { AppSettings } from '../../constants/GlobalValues'
 import { Logger } from '../../state/Logger'
 import { mmkv, mmkvStorage } from '../../storage/MMKV'
@@ -31,14 +37,17 @@ export type CompletionOutput = {
 
 export type LlamaState = {
     context: LlamaContext | undefined
-    model: undefined | ModelDataType
+    model?: ModelDataType
+    mmproj?: ModelDataType
     loadProgress: number
     chatCount: number
     promptCache?: string
     load: (model: ModelDataType) => Promise<void>
+    loadMmproj: (model: ModelDataType) => Promise<void>
     setLoadProgress: (progress: number) => void
     unload: () => Promise<void>
-    saveKV: (prompt: string | undefined) => Promise<void>
+    unloadMmproj: () => Promise<void>
+    saveKV: (prompt: string | undefined, media_paths?: string[]) => Promise<void>
     loadKV: () => Promise<boolean>
     completion: (
         params: CompletionParams,
@@ -46,8 +55,8 @@ export type LlamaState = {
         completed: (text: string, timngs: CompletionTimings) => void
     ) => Promise<void>
     stopCompletion: () => Promise<void>
-    tokenLength: (text: string) => number
-    tokenize: (text: string) => { tokens: number[] } | undefined
+    tokenLength: (text: string, mediaPaths?: string[]) => Promise<number>
+    tokenize: (text: string, media_paths?: string[]) => { tokens: number[] } | undefined
 }
 
 export type LlamaConfig = {
@@ -55,13 +64,17 @@ export type LlamaConfig = {
     threads: number
     gpu_layers: number
     batch: number
+    ctx_shift: boolean
 }
 
 export type EngineDataProps = {
     config: LlamaConfig
     lastModel?: ModelDataType
+    lastMmproj?: ModelDataType
     setConfiguration: (config: LlamaConfig) => void
-    setLastModelLoaded: (model: ModelDataType) => void
+    setLastModelLoaded: (model: ModelDataType | undefined) => void
+    setLastMmprojLoaded: (model: ModelDataType | undefined) => void
+    maybeClearLastLoaded: (mode: ModelDataType) => void
 }
 
 const sessionFile = `${AppDirectory.SessionPath}llama-session.bin`
@@ -71,19 +84,30 @@ const defaultConfig = {
     threads: 4,
     gpu_layers: 0,
     batch: 512,
+    ctx_shift: true,
 }
 
 export namespace Llama {
     export const useEngineData = create<EngineDataProps>()(
         persist(
-            (set) => ({
+            (set, get) => ({
                 config: defaultConfig,
-                lastModel: undefined,
                 setConfiguration: (config: LlamaConfig) => {
-                    set((state) => ({ ...state, config: config }))
+                    set({ config: config })
                 },
-                setLastModelLoaded: (model: ModelDataType) => {
-                    set((state) => ({ ...state, lastModel: model }))
+                setLastModelLoaded: (model: ModelDataType | undefined) => {
+                    if (get().lastModel?.id === model?.id) return
+                    set({ lastModel: model, lastMmproj: undefined })
+                },
+                setLastMmprojLoaded: (mmproj: ModelDataType | undefined) => {
+                    set({ lastMmproj: mmproj })
+                },
+                maybeClearLastLoaded: (data) => {
+                    if (data.id === get().lastModel?.id) {
+                        set({ lastModel: undefined, lastMmproj: undefined })
+                    } else if (data.id === get().lastMmproj?.id) {
+                        set({ lastMmproj: undefined })
+                    }
                 },
             }),
             {
@@ -91,9 +115,16 @@ export namespace Llama {
                 partialize: (state) => ({
                     config: state.config,
                     lastModel: state.lastModel,
+                    lastMmproj: state.lastMmproj,
                 }),
                 storage: createJSONStorage(() => mmkvStorage),
                 version: 1,
+                migrate: (persistedState: any, version) => {
+                    if (version === 1) {
+                        persistedState.config.ctx_shift = true
+                        Logger.info('Migrated to v2 EngineData')
+                    }
+                },
             }
         )
     )
@@ -102,7 +133,6 @@ export namespace Llama {
         context: undefined,
         loadProgress: 0,
         chatCount: 0,
-        model: undefined,
         promptCache: undefined,
         load: async (model: ModelDataType) => {
             const config = useEngineData.getState().config
@@ -115,8 +145,9 @@ export namespace Llama {
                 return Logger.errorToast('Quantization No Longer Supported!')
             }
 
-            if (!(await getInfoAsync(model.file_path)).exists) {
+            if (!(await Model.getModelExists(model.file_path))) {
                 Logger.errorToast('Model Does Not Exist!')
+                Model.verifyModelList()
                 return
             }
 
@@ -129,6 +160,9 @@ export namespace Llama {
                 n_ctx: config.context_length,
                 n_threads: config.threads,
                 n_batch: config.batch,
+                ctx_shift: config.ctx_shift,
+                use_mlock: true,
+                use_mmap: true,
             }
 
             Logger.info(
@@ -145,27 +179,59 @@ export namespace Llama {
 
             if (!llamaContext) return
 
-            set((state) => ({
-                ...state,
+            set({
                 context: llamaContext,
                 model: model,
                 chatCount: 1,
-            }))
+            })
 
             // updated EngineData
             useEngineData.getState().setLastModelLoaded(model)
             KV.useKVState.getState().setKvCacheLoaded(false)
         },
+        loadMmproj: async (model: ModelDataType) => {
+            const context = get().context
+            if (!context) return
+
+            Logger.info('Loading MMPROJ')
+            await context
+                .initMultimodal({ path: model.file_path, use_gpu: true })
+                .catch((e) => Logger.errorToast('Failed to load MMPROJ: ' + e))
+
+            // TODO: Fix previewing model capabilities
+            // refer to https://github.com/mybigday/llama.rn/issues/151
+
+            set({
+                mmproj: model,
+            })
+
+            useEngineData.getState().setLastMmprojLoaded(model)
+        },
         setLoadProgress: (progress: number) => {
-            set((state) => ({ ...state, loadProgress: progress }))
+            set({ loadProgress: progress })
         },
         unload: async () => {
+            if (get().mmproj) {
+                await get().context?.releaseMultimodal()
+            }
+
             await get().context?.release()
-            set((state) => ({
-                ...state,
+            set({
                 context: undefined,
                 model: undefined,
-            }))
+                mmproj: undefined,
+            })
+        },
+        unloadMmproj: async () => {
+            if (!get().mmproj) return
+            await get()
+                .context?.releaseMultimodal()
+                .catch((e) => {
+                    Logger.errorToast('Failed to unload MMPROJ: ' + e)
+                })
+            set({
+                mmproj: undefined,
+            })
         },
         completion: async (
             params: CompletionParams,
@@ -187,16 +253,16 @@ export namespace Llama {
                     Logger.info(
                         `\n---- Start Chat ${get().chatCount} ----\n${textTimings(timings)}\n---- End Chat ${get().chatCount} ----\n`
                     )
-                    set((state) => ({ ...state, chatCount: get().chatCount + 1 }))
+                    set({ chatCount: get().chatCount + 1 })
                     if (mmkv.getBoolean(AppSettings.SaveLocalKV)) {
-                        await get().saveKV(params.prompt)
+                        await get().saveKV(params.prompt, params.media_paths ?? [])
                     }
                 })
         },
         stopCompletion: async () => {
             await get().context?.stopCompletion()
         },
-        saveKV: async (prompt: string | undefined) => {
+        saveKV: async (prompt, media_paths) => {
             const llamaContext = get().context
             if (!llamaContext) {
                 Logger.errorToast('No Model Loaded')
@@ -204,11 +270,12 @@ export namespace Llama {
             }
 
             if (prompt) {
-                const tokens = get().tokenize(prompt)?.tokens
+                const tokens = get().tokenize(prompt, media_paths ?? [])?.tokens
                 KV.useKVState.getState().setKvCacheTokens(tokens ?? [])
             }
 
             if (!(await getInfoAsync(sessionFile)).exists) {
+                Logger.warn('Session file does not exist, creating...')
                 await writeAsStringAsync(sessionFile, '', { encoding: 'base64' })
             }
 
@@ -244,11 +311,18 @@ export namespace Llama {
                 })
             return result
         },
-        tokenLength: (text: string) => {
-            return get().context?.tokenizeSync(text)?.tokens?.length ?? 0
+        tokenLength: async (text: string, mediaPaths: string[] = []) => {
+            const result = await get().context?.tokenizeAsync(
+                text + mediaPaths.map(() => RNLLAMA_MTMD_DEFAULT_MEDIA_MARKER).join(),
+                {
+                    media_paths: mediaPaths.map((item) => item.replace('file://', '')),
+                }
+            )
+            if (!result) return 0
+            return result.tokens.length
         },
-        tokenize: (text: string) => {
-            return get().context?.tokenizeSync(text)
+        tokenize: (text: string, media_paths: string[] = []) => {
+            return get().context?.tokenizeSync(text, { media_paths: media_paths })
         },
     }))
 
@@ -270,57 +344,4 @@ export namespace Llama {
                 : '\nNo Tokens Generated')
         )
     }
-
-    // Presets
-
-    // Downloaders - Old Placeholder
-    /*
-    export const downloadModel = async (
-        url: string,
-        callback?: () => void,
-        cancel?: (cancel: () => void) => void
-    ) => {
-        // check if this model already exists
-        const result = await fetch(url, { method: 'HEAD' })
-        const contentDisposition = result.headers.get('Content-Disposition')
-        let filename = undefined
-        if (contentDisposition && contentDisposition.includes('filename=')) {
-            filename = contentDisposition.split('filename=')[1].split(';')[0].replace(/['"]/g, '')
-        }
-        if (!filename) {
-            Logger.log('Invalid URL', true)
-            return
-        }
-        const fileInfo = await getInfoAsync(`${AppDirectory.ModelPath}${filename}`)
-        if (fileInfo.exists) {
-            Logger.log('Model already exists!', true)
-            // return
-        }
-        let current = 0
-        const downloadTask = createDownloadResumable(
-            url,
-            `${cacheDirectory}${filename}`,
-            {},
-            (progress) => {
-                const percentage = progress.totalBytesWritten / progress.totalBytesExpectedToWrite
-                if (percentage <= current) return
-                current = percentage
-            }
-        )
-        await downloadTask
-            .downloadAsync()
-            .then(async (result) => {
-                if (!result?.uri) {
-                    Logger.log('Download failed')
-                    return
-                }
-                await moveAsync({
-                    from: result.uri,
-                    to: `${AppDirectory.ModelPath}${filename}`,
-                }).then(() => {
-                    Logger.log(`${filename} downloaded sucessfully!`)
-                })
-            })
-            .catch((err) => Logger.log(`Failed to download: ${err}`))
-    }*/
 }

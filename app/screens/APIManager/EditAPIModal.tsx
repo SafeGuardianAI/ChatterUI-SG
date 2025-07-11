@@ -11,7 +11,9 @@ import { Logger } from '@lib/state/Logger'
 import { Theme } from '@lib/theme/ThemeManager'
 import { useEffect, useState } from 'react'
 import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native'
-import Animated, { SlideOutDown } from 'react-native-reanimated'
+import Animated, { FadeIn, SlideOutDown } from 'react-native-reanimated'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useShallow } from 'zustand/react/shallow'
 
 type EditAPIModalProps = {
     index: number
@@ -24,10 +26,12 @@ const EditAPIModal: React.FC<EditAPIModalProps> = ({ index, show, close, origina
     const { color, spacing, fontSize } = Theme.useTheme()
     const styles = useStyles()
 
-    const { editValue, getTemplates } = APIState.useAPIState((state) => ({
-        getTemplates: state.getTemplates,
-        editValue: state.editValue,
-    }))
+    const { editValue, getTemplates } = APIState.useAPIState(
+        useShallow((state) => ({
+            getTemplates: state.getTemplates,
+            editValue: state.editValue,
+        }))
+    )
 
     const [template, setTemplate] = useState<APIConfiguration>(getTemplates()[0])
 
@@ -75,8 +79,9 @@ const EditAPIModal: React.FC<EditAPIModalProps> = ({ index, show, close, origina
     return (
         <Modal
             transparent
-            onRequestClose={close}
             statusBarTranslucent
+            navigationBarTranslucent
+            onRequestClose={close}
             visible={show}
             animationType="fade">
             <FadeBackrop
@@ -86,7 +91,10 @@ const EditAPIModal: React.FC<EditAPIModalProps> = ({ index, show, close, origina
             />
 
             <View style={{ flex: 1 }} />
-            <Animated.View style={styles.mainContainer} exiting={SlideOutDown.duration(300)}>
+            <Animated.View
+                style={styles.mainContainer}
+                entering={FadeIn.duration(100)}
+                exiting={SlideOutDown.duration(300)}>
                 <Text
                     style={{
                         color: color.text._100,
@@ -252,11 +260,13 @@ const EditAPIModal: React.FC<EditAPIModalProps> = ({ index, show, close, origina
 export default EditAPIModal
 
 const useStyles = () => {
+    const insets = useSafeAreaInsets()
     const { color, spacing, borderRadius } = Theme.useTheme()
     return StyleSheet.create({
         mainContainer: {
             marginVertical: spacing.xl,
-            paddingVertical: spacing.xl2,
+            paddingTop: spacing.xl2,
+            paddingBottom: insets.bottom,
             paddingHorizontal: spacing.xl,
             borderTopLeftRadius: borderRadius.xl,
             borderTopRightRadius: borderRadius.xl,

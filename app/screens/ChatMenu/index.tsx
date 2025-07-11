@@ -1,9 +1,9 @@
+import ThemedButton from '@components/buttons/ThemedButton'
 import Drawer from '@components/views/Drawer'
 import HeaderButton from '@components/views/HeaderButton'
 import HeaderTitle from '@components/views/HeaderTitle'
 import { Characters } from '@lib/state/Characters'
 import { Chats } from '@lib/state/Chat'
-import { Theme } from '@lib/theme/ThemeManager'
 import ChatInput from '@screens/ChatMenu/ChatInput'
 import AvatarViewer from '@screens/ChatMenu/ChatWindow/AvatarViewer'
 import ChatWindow from '@screens/ChatMenu/ChatWindow/ChatWindow'
@@ -12,23 +12,29 @@ import GrammarToggle from '@screens/ChatMenu/GrammarToggle'
 import OptionsMenu from '@screens/ChatMenu/OptionsMenu'
 import SettingsDrawer from '@screens/SettingsDrawer'
 import { useEffect } from 'react'
-import { SafeAreaView, View } from 'react-native'
+import { View, KeyboardAvoidingView, Platform } from 'react-native'
+import { Theme } from '@lib/theme/ThemeManager'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useShallow } from 'zustand/react/shallow'
 
 const ChatMenu = () => {
     const { spacing } = Theme.useTheme()
-    const { unloadCharacter } = Characters.useCharacterCard(
+    const insets = useSafeAreaInsets()
+    const { unloadCharacter, charId } = Characters.useCharacterCard(
         useShallow((state) => ({
             unloadCharacter: state.unloadCard,
+            charId: state.id,
         }))
     )
 
-    const { chat, unloadChat } = Chats.useChat()
+    const { chat, unloadChat, loadChat } = Chats.useChat()
 
-    const { showSettings, showChats } = Drawer.useDrawerState((state) => ({
-        showSettings: state.values?.[Drawer.ID.SETTINGS],
-        showChats: state.values?.[Drawer.ID.CHATLIST],
-    }))
+    const { showSettings, showChats } = Drawer.useDrawerState(
+        useShallow((state) => ({    
+            showSettings: state.values?.[Drawer.ID.SETTINGS],
+            showChats: state.values?.[Drawer.ID.CHATLIST],
+        }))
+    )
 
     useEffect(() => {
         return () => {
@@ -37,31 +43,80 @@ const ChatMenu = () => {
         }
     }, [])
 
+    const handleCreateChat = async () => {
+        if (charId)
+            Chats.db.mutate.createChat(charId).then((chatId) => {
+                if (chatId) loadChat(chatId)
+            })
+    }
+
+    // TODO: This is a fix for gesture vs 3-button nav for android
+    const getOffset = () => {
+        // assume gesture nav, 54 is arbitrary keyboard nav height
+        if (insets.bottom < 30) return insets.bottom + 54
+        return insets.bottom
+    }
+
     return (
         <Drawer.Gesture
             config={[
-                { drawerID: Drawer.ID.CHATLIST, openDirection: 'left', closeDirection: 'right' },
-                { drawerID: Drawer.ID.SETTINGS, openDirection: 'right', closeDirection: 'left' },
+                {
+                    drawerID: Drawer.ID.CHATLIST,
+                    openDirection: 'left',
+                    closeDirection: 'right',
+                },
+                {
+                    drawerID: Drawer.ID.SETTINGS,
+                    openDirection: 'right',
+                    closeDirection: 'left',
+                },
             ]}>
-            <SafeAreaView
-                style={{
-                    flex: 1,
-                    flexDirection: 'row',
-                }}>
-                <HeaderTitle />
-                <HeaderButton
-                    headerLeft={() => !showChats && <Drawer.Button drawerID={Drawer.ID.SETTINGS} />}
-                    headerRight={() =>
-                        !showSettings && (
-                            <Drawer.Button drawerID={Drawer.ID.CHATLIST} openIcon="message1" />
-                        )
-                    }
-                />
-
+            <View style={{ flex: 1 }}>
+                <KeyboardAvoidingView
+                    keyboardVerticalOffset={getOffset()}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={{ flex: 1, paddingBottom: insets.bottom }}>
+                    <HeaderTitle />
+                    <HeaderButton
+                        headerLeft={() =>
+                            !showChats && <Drawer.Button drawerID={Drawer.ID.SETTINGS} />
+                        }
+                        headerRight={() =>
+                            !showSettings && (
+                                <>
+                                    {!showChats && (
+                                        <ThemedButton
+                                            buttonStyle={{
+                                                marginRight: 16,
+                                            }}
+                                            iconName="plus"
+                                            variant="tertiary"
+                                            iconSize={24}
+                                            onPress={handleCreateChat}
+                                        />
+                                    )}
+                                    <Drawer.Button
+                                        drawerID={Drawer.ID.CHATLIST}
+                                        openIcon="message1"
+                                    />
+                                </>
+                            )
+                        }
+                    />
+                    {chat && <ChatWindow />}
+                    <ChatInput />
+                    <AvatarViewer />
+                </KeyboardAvoidingView>
+                {/**Drawer has to be outside of the KeyboardAvoidingView */}
                 <View
                     style={{
-                        flex: 1,
+                        width: '100%',
+                        height: '100%',
+                        paddingBottom: insets.bottom,
+                        position: 'absolute',
                     }}>
+                    <SettingsDrawer />
+                    <ChatsDrawer />
                     {chat && <ChatWindow />}
                     <View
                         style={{
@@ -77,10 +132,7 @@ const ChatMenu = () => {
                         <ChatInput />
                     </View>
                 </View>
-
-                <ChatsDrawer />
-                <SettingsDrawer />
-            </SafeAreaView>
+            </View>
         </Drawer.Gesture>
     )
 }

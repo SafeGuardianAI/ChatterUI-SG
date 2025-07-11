@@ -6,6 +6,7 @@ import { FlashList } from '@shopify/flash-list'
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite'
 import React, { useState } from 'react'
 import { Text, View } from 'react-native'
+import { useShallow } from 'zustand/react/shallow'
 
 import UserListing from './UserListing'
 
@@ -15,10 +16,12 @@ const UserList = () => {
     const { data } = useLiveQuery(Characters.db.query.cardListQuery('user'))
 
     const [showNewUser, setShowNewUser] = useState(false)
-    const { setCard, id } = Characters.useUserCard((state) => ({
-        setCard: state.setCard,
-        id: state.id,
-    }))
+    const { setCard, id } = Characters.useUserCard(
+        useShallow((state) => ({
+            setCard: state.setCard,
+            id: state.id,
+        }))
+    )
 
     const currentIndex = data.findIndex((item) => item.id === id)
 

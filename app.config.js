@@ -5,7 +5,7 @@ module.exports = {
         name: IS_DEV ? 'ChatterUI (DEV)' : 'ChatterUI',
         newArchEnabled: true,
         slug: 'ChatterUI',
-        version: '0.8.6',
+        version: '0.8.7-beta6',
         orientation: 'default',
         icon: './assets/images/icon.png',
         scheme: 'chatterui',
@@ -28,6 +28,7 @@ module.exports = {
                 monochromeImage: './assets/images/adaptive-icon-foreground.png',
                 backgroundColor: '#000',
             },
+            edgeToEdgeEnabled: true,
             package: IS_DEV ? 'com.Vali98.ChatterUIDev' : 'com.Vali98.ChatterUI',
             userInterfaceStyle: 'dark',
             permissions: [
@@ -90,6 +91,7 @@ module.exports = {
         ],
         experiments: {
             typedRoutes: true,
+            reactCompiler: true,
         },
         extra: {
             router: {
@@ -101,4 +103,3 @@ module.exports = {
         },
     },
 }
-

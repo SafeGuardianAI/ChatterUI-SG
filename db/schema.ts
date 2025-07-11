@@ -1,5 +1,5 @@
-import { relations, sql } from 'drizzle-orm'
-import { integer, sqliteTable, text, primaryKey } from 'drizzle-orm/sqlite-core'
+import { relations } from 'drizzle-orm'
+import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 // TAVERN V2 SPEC
 
@@ -25,8 +25,6 @@ export const characters = sqliteTable('characters', {
     last_modified: integer('last_modified', { mode: 'number' })
         .$defaultFn(() => Date.now())
         .$onUpdateFn(() => Date.now()),
-    //.default(sql`(unixepoch('subsec')*1000)`)
-    //.$onUpdate(() => sql`(unixepoch('subsec')*1000)`),
 })
 
 export const characterGreetings = sqliteTable('character_greetings', {
@@ -101,6 +99,7 @@ export const chats = sqliteTable('chats', {
         .$defaultFn(() => Date.now())
         .$onUpdateFn(() => Date.now()),
     name: text('name').notNull().default('New Chat'),
+    scroll_offset: integer('scroll_offset', { mode: 'number' }).notNull().default(0),
 })
 
 export const chatEntries = sqliteTable('chat_entries', {
@@ -149,11 +148,31 @@ export const chatEntriesRelations = relations(chatEntries, ({ one, many }) => ({
         references: [chats.id],
     }),
     swipes: many(chatSwipes),
+    attachments: many(chatAttachments),
 }))
 
 export const swipesRelations = relations(chatSwipes, ({ one }) => ({
     entry: one(chatEntries, {
         fields: [chatSwipes.entry_id],
+        references: [chatEntries.id],
+    }),
+}))
+
+export const chatAttachments = sqliteTable('chat_attachment', {
+    id: integer('id', { mode: 'number' }).primaryKey({ autoIncrement: true }),
+    chat_entry_id: integer('chat_entry_id', { mode: 'number' })
+        .notNull()
+        .references(() => chatEntries.id, { onDelete: 'cascade' }),
+    uri: text('uri').notNull(),
+    type: text('type', { enum: ['audio', 'image', 'document'] }).notNull(),
+    mime_type: text('mime_type').notNull(),
+    name: text('name').notNull(),
+    size: integer('size').notNull().default(0),
+})
+
+export const mediaAttachmentsRelations = relations(chatAttachments, ({ one }) => ({
+    entry: one(chatEntries, {
+        fields: [chatAttachments.chat_entry_id],
         references: [chatEntries.id],
     }),
 }))
@@ -190,6 +209,16 @@ export const instructs = sqliteTable('instructs', {
     // additions 17/10/2024 v5
     scenario: integer('scenario', { mode: 'boolean' }).notNull().default(true),
     personality: integer('personality', { mode: 'boolean' }).notNull().default(true),
+
+    // additions 5/5/2025 v6
+    hide_think_tags: integer('hide_think_tags', { mode: 'boolean' }).notNull().default(true),
+    use_common_stop: integer('use_common_stop', { mode: 'boolean' }).notNull().default(true),
+
+    // additions 22/5/2025 v7
+    send_images: integer('send_images', { mode: 'boolean' }).notNull().default(true),
+    send_audio: integer('send_audio', { mode: 'boolean' }).notNull().default(true),
+    send_documents: integer('send_documents', { mode: 'boolean' }).notNull().default(true),
+    last_image_only: integer('last_image_only', { mode: 'boolean' }).notNull().default(true),
 })
 
 // LOREBOOKS
@@ -285,10 +314,44 @@ export const model_data = sqliteTable('model_data', {
         .$onUpdateFn(() => Date.now()),
 })
 
+export const model_mmproj_links = sqliteTable(
+    'model_mmproj_links',
+    {
+        model_id: integer('model_id', { mode: 'number' })
+            .notNull()
+            .references(() => model_data.id, { onDelete: 'cascade' }),
+
+        mmproj_id: integer('mmproj_id', { mode: 'number' })
+            .notNull()
+            .references(() => model_data.id, { onDelete: 'cascade' }),
+    },
+    (table) => {
+        return {
+            pk: primaryKey({ columns: [table.model_id, table.mmproj_id] }),
+        }
+    }
+)
+
+export const modelDataRelations = relations(model_data, ({ one }) => ({
+    mmprojLink: one(model_mmproj_links, {
+        relationName: 'model_to_mmproj',
+        fields: [model_data.id],
+        references: [model_mmproj_links.model_id],
+    }),
+    modelLink: one(model_mmproj_links, {
+        relationName: 'mmproj_to_model',
+        fields: [model_data.id],
+        references: [model_mmproj_links.mmproj_id],
+    }),
+}))
+
 // Types
 
 export type ModelDataType = typeof model_data.$inferSelect
 export type ChatSwipe = typeof chatSwipes.$inferSelect
+export type ChatEntryType = typeof chatEntries.$inferSelect
+export type ChatType = typeof chats.$inferSelect
+export type ChatAttachmentType = typeof chatAttachments.$inferSelect
 
 export type CompletionTimings = {
     predicted_per_token_ms: number

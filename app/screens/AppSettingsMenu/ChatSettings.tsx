@@ -11,6 +11,9 @@ const ChatSettings = () => {
     const [autoScroll, setAutoScroll] = useMMKVBoolean(AppSettings.AutoScroll)
     const [sendOnEnter, setSendOnEnter] = useMMKVBoolean(AppSettings.SendOnEnter)
     const [autoLoadUser, setAutoLoadUser] = useMMKVBoolean(AppSettings.AutoLoadUser)
+    const [quickDelete, setQuickDelete] = useMMKVBoolean(AppSettings.QuickDelete)
+    const [saveScroll, setSaveScroll] = useMMKVBoolean(AppSettings.SaveScrollPosition)
+    const [autoTitle, setAutoTitle] = useMMKVBoolean(AppSettings.AutoGenerateTitle)
 
     const [showTokensPerSecond, setShowTokensPerSecond] = useMMKVBoolean(
         AppSettings.ShowTokenPerSecond
@@ -60,6 +63,27 @@ const ChatSettings = () => {
                 value={showTokensPerSecond}
                 onChangeValue={setShowTokensPerSecond}
                 description="Show tokens per second when using local models"
+            />
+
+            <ThemedSwitch
+                label="Quick Delete"
+                value={quickDelete}
+                onChangeValue={setQuickDelete}
+                description="Toggle delete button in chat options bar"
+            />
+
+            <ThemedSwitch
+                label="Save Scroll Position"
+                value={saveScroll}
+                onChangeValue={setSaveScroll}
+                description="Automatically move to last scrolled position in chat"
+            />
+
+            <ThemedSwitch
+                label="Automatically Generate Titles"
+                value={autoTitle}
+                onChangeValue={setAutoTitle}
+                description="Automatically generates titles for chats"
             />
         </View>
     )
