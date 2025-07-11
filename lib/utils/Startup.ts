@@ -5,8 +5,11 @@ import { useAppModeState } from '@lib/state/AppMode'
 import { Instructs } from '@lib/state/Instructs'
 import { SamplersManager } from '@lib/state/SamplerState'
 import { useTTSState } from '@lib/state/TTS'
+<<<<<<< HEAD
+=======
 import { getThreads } from '@vali98/react-native-cpu-info'
 
+>>>>>>> 466189f4b6895fe6260e842a8c961e9902000a41
 import {
     convertJsonSchemaToGrammar,
     getCpuFeatures,

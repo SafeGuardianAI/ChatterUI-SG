@@ -74,7 +74,11 @@ const GrammarToggle = () => {
 
         Alert.alert({
             title: 'Grammar Constraints',
+<<<<<<< HEAD
+            description: `Status: ${isEnabled ? 'Enabled' : 'Disabled'}\n\n${grammarPreview || 'No grammar rules defined.'}`,
+=======
             description: `Status: ${isEnabled ? 'Enabled' : 'Disabled'}\n\n${isEnabled ? 'When enabled, the model generates twice:\n• First without grammar (saved to conversation)\n• Then with grammar (for guidance)\n\nThis ensures natural conversation flow while respecting grammar rules.\n\n' : ''}${grammarPreview || 'No grammar rules defined.'}`,
+>>>>>>> 466189f4b6895fe6260e842a8c961e9902000a41
             buttons: [
                 { label: 'Close' },
                 ...(hasGrammar ? [{ 
@@ -85,6 +89,14 @@ const GrammarToggle = () => {
         })
     }
 
+<<<<<<< HEAD
+    // If no grammar is available, don't show the toggle
+    if (!hasGrammar && !isEnabled) {
+        return null
+    }
+
+=======
+>>>>>>> 466189f4b6895fe6260e842a8c961e9902000a41
     return (
         <TouchableOpacity
             style={{
@@ -96,11 +108,16 @@ const GrammarToggle = () => {
                 marginHorizontal: spacing.xs,
                 minWidth: 80,
                 justifyContent: 'center',
+<<<<<<< HEAD
+                borderWidth: hasGrammar && !isEnabled ? 1 : 0,
+                borderColor: hasGrammar && !isEnabled ? color.primary._300 : 'transparent',
+=======
                 borderWidth: 1,
                 borderColor: hasGrammar 
                     ? (isEnabled ? color.primary._500 : color.primary._300)
                     : color.neutral._400,
                 opacity: hasGrammar ? 1 : 0.6,
+>>>>>>> 466189f4b6895fe6260e842a8c961e9902000a41
             }}
             onPress={toggleGrammar}
             onLongPress={showGrammarInfo}
