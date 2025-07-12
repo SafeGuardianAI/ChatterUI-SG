@@ -13,6 +13,7 @@ import { APIConfiguration, APISampler, APIValues } from './API/APIBuilder.types'
 import { buildChatCompletionContext, buildTextCompletionContext } from './API/ContextBuilder'
 import { Llama, LlamaConfig } from './Local/LlamaLocal'
 import { KV } from './Local/Model'
+import { RescueAPIService, RescueAPISettings } from '@lib/services/RescueAPI'
 
 export const localSamplerData: APISampler[] = [
     { externalName: 'n_predict', samplerID: SamplerID.GENERATED_LENGTH },
@@ -257,12 +258,54 @@ const runLocalCompletion = async (payload: Awaited<ReturnType<typeof buildLocalP
         useTTSState.getState().insertBuffer(text)
     }
 
-    const outputCompleted = (text: string, timings: CompletionTimings) => {
+    const outputCompleted = async (text: string, timings: CompletionTimings) => {
         const regenCache = Chats.useChatState.getState().getRegenCache()
+        const finalText = (regenCache + text).replaceAll(replace, '')
         Chats.useChatState
             .getState()
-            .setBuffer({ data: (regenCache + text).replaceAll(replace, ''), timings: timings })
+            .setBuffer({ data: finalText, timings: timings })
         if (mmkv.getBoolean(AppSettings.PrintContext)) Logger.info(`Completion Output:\n${text}`)
+        
+        // Check if grammar is enabled and rescue API is enabled
+        const currentSampler = SamplersManager.getCurrentSampler()
+        const hasGrammar = !!(currentSampler.grammar_string && String(currentSampler.grammar_string).trim().length > 0)
+        
+        if (hasGrammar && mmkv.getBoolean(RescueAPISettings.Enabled)) {
+            try {
+                const rescueAPI = RescueAPIService.getInstance()
+                await rescueAPI.initialize()
+
+                // Parse the AI response
+                const victimData = rescueAPI.parseAIResponse(finalText)
+                
+                if (victimData && rescueAPI.validateVictimData(victimData)) {
+                    Logger.info('Valid victim data detected in local generation, sending to Rescue API')
+                    
+                    // Check if we should update existing victim or create new
+                    const lastVictimNumber = mmkv.getString(RescueAPISettings.LastVictimNumber)
+                    
+                    if (lastVictimNumber && victimData.update_existing) {
+                        // Update existing victim
+                        const result = await rescueAPI.updateVictim(lastVictimNumber, victimData)
+                        if (result) {
+                            Logger.infoToast(`Victim ${lastVictimNumber} updated successfully`)
+                        }
+                    } else {
+                        // Create new victim report
+                        const victimNumber = await rescueAPI.postVictim(victimData)
+                        if (victimNumber) {
+                            mmkv.set(RescueAPISettings.LastVictimNumber, victimNumber)
+                            Logger.infoToast(`New victim reported: ${victimNumber}`)
+                        }
+                    }
+                } else {
+                    Logger.debug('No valid victim data found in local AI response')
+                }
+            } catch (error) {
+                Logger.error(`Failed to send data to Rescue API from local generation: ${error}`)
+            }
+        }
+        
         stopGenerating()
     }
 

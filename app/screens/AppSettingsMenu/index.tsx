@@ -9,6 +9,7 @@ import ChatSettings from './ChatSettings'
 import DatabaseSettings from './DatabaseSettings'
 import GeneratingSettings from './GeneratingSettings'
 import NotificationSettings from './NotificationSettings'
+import RescueAPISettings from './RescueAPISettings'
 import ScreenSettings from './ScreenSettings'
 import SecuritySettings from './SecuritySettings'
 import StyleSettings from './StyleSettings'
@@ -31,6 +32,7 @@ const AppSettingsMenu = () => {
             <CharacterSettings />
             <GeneratingSettings />
             <NotificationSettings />
+            <RescueAPISettings />
             <ScreenSettings />
             <DatabaseSettings />
             <SecuritySettings />

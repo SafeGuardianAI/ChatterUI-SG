@@ -4,6 +4,7 @@ import {
     SamplerID,
     Samplers,
 } from '@lib/constants/SamplerData'
+import { VICTIM_SCHEMA_GRAMMAR } from '@lib/constants/VictimGrammar'
 import { Storage } from '@lib/enums/Storage'
 import { Logger } from '@lib/state/Logger'
 import { mmkvStorage } from '@lib/storage/MMKV'
@@ -156,6 +157,31 @@ export namespace SamplersManager {
             return { data: JSON.parse(data), name: name }
         } catch (e) {
             Logger.errorToast(`Failed to import: ${e}`)
+        }
+    }
+
+    export const createRescueAPISamplerPreset = () => {
+        const defaultConfig = { ...defaultSamplerConfig }
+        defaultConfig.grammar_string = VICTIM_SCHEMA_GRAMMAR
+        
+        const rescuePreset: SamplerConfig = {
+            name: 'Rescue API Preset',
+            data: defaultConfig
+        }
+        
+        // Check if preset already exists
+        const state = useSamplerState.getState()
+        const existingIndex = state.configList.findIndex(config => config.name === 'Rescue API Preset')
+        
+        if (existingIndex === -1) {
+            // Add new preset
+            state.addSamplerConfig(rescuePreset)
+            Logger.infoToast('Rescue API Preset created successfully')
+        } else {
+            // Update existing preset
+            state.configList[existingIndex] = rescuePreset
+            state.setConfig(existingIndex)
+            Logger.infoToast('Rescue API Preset updated')
         }
     }
 }

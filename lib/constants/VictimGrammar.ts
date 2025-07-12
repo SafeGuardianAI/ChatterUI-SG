@@ -1,0 +1,165 @@
+// This is the exact content from assets/grammars/victim_schema.gbnf
+export const VICTIM_SCHEMA_GRAMMAR = `# Replace the original char rule with English-only version
+char ::= en-char | [\\] (["\\bfnrt] | "u" [0-9a-fA-F]{4})
+
+# Add your English character definitions
+en-char     ::= letter | digit | punctuation | " "
+letter      ::= [a-zA-Z]
+digit       ::= [0-9]
+punctuation ::= [!"#$%&'()*+,-./:;<=>?@[\\\]^_\`{|}~]
+
+
+boolean ::= ("true" | "false") space
+date ::= [0-9]{4} "-" ( "0" [1-9] | "1" [0-2] ) "-" ( "0" [1-9] | [1-2] [0-9] | "3" [0-1] )
+date-time ::= date "T" time
+date-time-string ::= "\"" date-time "\"" space
+decimal-part ::= [0-9]{1,16}
+integral-part ::= [0] | [1-9] [0-9]{0,15}
+number ::= ("-"? integral-part) ("." decimal-part)? ([eE] [-+]? integral-part)? space
+root ::= "{" space victim-info-kv "}" space
+space ::= | " " | "\n"{1,2} [ \t]{0,20}
+string ::= "\"" char* "\"" space
+time ::= ([01] [0-9] | "2" [0-3]) ":" [0-5] [0-9] ":" [0-5] [0-9] ( "." [0-9]{3} )? ( "Z" | ( "+" | "-" ) ( [01] [0-9] | "2" [0-3] ) ":" [0-5] [0-9] )
+victim-info ::= "{" space  (victim-info-id-kv victim-info-id-rest | victim-info-emergency-status-kv victim-info-emergency-status-rest | victim-info-location-kv victim-info-location-rest | victim-info-personal-info-kv victim-info-personal-info-rest | victim-info-medical-info-kv victim-info-medical-info-rest | victim-info-situation-kv victim-info-situation-rest | victim-info-contact-info-kv victim-info-contact-info-rest | victim-info-resources-kv victim-info-resources-rest | victim-info-rescue-info-kv victim-info-rescue-info-rest | victim-info-environmental-data-kv victim-info-environmental-data-rest | victim-info-device-data-kv victim-info-device-data-rest | victim-info-social-info-kv victim-info-social-info-rest | victim-info-psychological-status-kv )? "}" space
+victim-info-contact-info ::= "{" space victim-info-contact-info-phone-kv "," space victim-info-contact-info-email-kv "," space victim-info-contact-info-emergency-contact-kv "}" space
+victim-info-contact-info-email-kv ::= "\"email\"" space ":" space string
+victim-info-contact-info-emergency-contact ::= "{" space victim-info-contact-info-emergency-contact-name-kv "," space victim-info-contact-info-emergency-contact-relationship-kv "," space victim-info-contact-info-emergency-contact-phone-kv "}" space
+victim-info-contact-info-emergency-contact-kv ::= "\"emergency_contact\"" space ":" space victim-info-contact-info-emergency-contact
+victim-info-contact-info-emergency-contact-name-kv ::= "\"name\"" space ":" space string
+victim-info-contact-info-emergency-contact-phone-kv ::= "\"phone\"" space ":" space string
+victim-info-contact-info-emergency-contact-relationship-kv ::= "\"relationship\"" space ":" space string
+victim-info-contact-info-kv ::= "\"contact_info\"" space ":" space victim-info-contact-info
+victim-info-contact-info-phone-kv ::= "\"phone\"" space ":" space string
+victim-info-contact-info-rest ::= ( "," space victim-info-resources-kv )? victim-info-resources-rest
+victim-info-device-data ::= "{" space victim-info-device-data-battery-level-kv "," space victim-info-device-data-network-status-kv "}" space
+victim-info-device-data-battery-level-kv ::= "\"battery_level\"" space ":" space number
+victim-info-device-data-kv ::= "\"device_data\"" space ":" space victim-info-device-data
+victim-info-device-data-network-status ::= ("\"none\"" | "\"weak\"" | "\"strong\"" | "\"unknown\"") space
+victim-info-device-data-network-status-kv ::= "\"network_status\"" space ":" space victim-info-device-data-network-status
+victim-info-device-data-rest ::= ( "," space victim-info-social-info-kv )? victim-info-social-info-rest
+victim-info-emergency-status ::= ("\"critical\"" | "\"serious\"" | "\"stable\"" | "\"rescued\"" | "\"unknown\"") space
+victim-info-emergency-status-kv ::= "\"emergency_status\"" space ":" space victim-info-emergency-status
+victim-info-emergency-status-rest ::= ( "," space victim-info-location-kv )? victim-info-location-rest
+victim-info-environmental-data ::= "{" space victim-info-environmental-data-temperature-kv "," space victim-info-environmental-data-humidity-kv "," space victim-info-environmental-data-air-quality-kv "," space victim-info-environmental-data-weather-kv "}" space
+victim-info-environmental-data-air-quality-kv ::= "\"air_quality\"" space ":" space string
+victim-info-environmental-data-humidity-kv ::= "\"humidity\"" space ":" space number
+victim-info-environmental-data-kv ::= "\"environmental_data\"" space ":" space victim-info-environmental-data
+victim-info-environmental-data-rest ::= ( "," space victim-info-device-data-kv )? victim-info-device-data-rest
+victim-info-environmental-data-temperature-kv ::= "\"temperature\"" space ":" space number
+victim-info-environmental-data-weather-kv ::= "\"weather\"" space ":" space string
+victim-info-id-kv ::= "\"id\"" space ":" space string
+victim-info-id-rest ::= ( "," space victim-info-emergency-status-kv )? victim-info-emergency-status-rest
+victim-info-kv ::= "\"victim_info\"" space ":" space victim-info
+victim-info-location ::= "{" space victim-info-location-lat-kv "," space victim-info-location-lon-kv "," space victim-info-location-details-kv "," space victim-info-location-nearest-landmark-kv "}" space
+victim-info-location-details-kv ::= "\"details\"" space ":" space string
+victim-info-location-kv ::= "\"location\"" space ":" space victim-info-location
+victim-info-location-lat-kv ::= "\"lat\"" space ":" space number
+victim-info-location-lon-kv ::= "\"lon\"" space ":" space number
+victim-info-location-nearest-landmark-kv ::= "\"nearest_landmark\"" space ":" space string
+victim-info-location-rest ::= ( "," space victim-info-personal-info-kv )? victim-info-personal-info-rest
+victim-info-medical-info ::= "{" space victim-info-medical-info-injuries-kv "," space victim-info-medical-info-pain-level-kv "," space victim-info-medical-info-medical-conditions-kv "," space victim-info-medical-info-medications-kv "," space victim-info-medical-info-allergies-kv "," space victim-info-medical-info-blood-type-kv "}" space
+victim-info-medical-info-allergies ::= "[" space (string ("," space string)*)? "]" space
+victim-info-medical-info-allergies-kv ::= "\"allergies\"" space ":" space victim-info-medical-info-allergies
+victim-info-medical-info-blood-type ::= ("\"A+\"" | "\"A-\"" | "\"B+\"" | "\"B-\"" | "\"AB+\"" | "\"AB-\"" | "\"O+\"" | "\"O-\"" | "\"unknown\"") space
+victim-info-medical-info-blood-type-kv ::= "\"blood_type\"" space ":" space victim-info-medical-info-blood-type
+victim-info-medical-info-injuries ::= "[" space (string ("," space string)*)? "]" space
+victim-info-medical-info-injuries-kv ::= "\"injuries\"" space ":" space victim-info-medical-info-injuries
+victim-info-medical-info-kv ::= "\"medical_info\"" space ":" space victim-info-medical-info
+victim-info-medical-info-medical-conditions ::= "[" space (string ("," space string)*)? "]" space
+victim-info-medical-info-medical-conditions-kv ::= "\"medical_conditions\"" space ":" space victim-info-medical-info-medical-conditions
+victim-info-medical-info-medications ::= "[" space (string ("," space string)*)? "]" space
+victim-info-medical-info-medications-kv ::= "\"medications\"" space ":" space victim-info-medical-info-medications
+victim-info-medical-info-pain-level ::= ([0-9] | "10") space
+victim-info-medical-info-pain-level-kv ::= "\"pain_level\"" space ":" space victim-info-medical-info-pain-level
+victim-info-medical-info-rest ::= ( "," space victim-info-situation-kv )? victim-info-situation-rest
+victim-info-personal-info ::= "{" space victim-info-personal-info-name-kv "," space victim-info-personal-info-age-kv "," space victim-info-personal-info-gender-kv "," space victim-info-personal-info-language-kv "," space victim-info-personal-info-physical-description-kv "}" space
+victim-info-personal-info-age ::= ([0] | [1-9] [0-9]{0,15}) space
+victim-info-personal-info-age-kv ::= "\"age\"" space ":" space victim-info-personal-info-age
+victim-info-personal-info-gender-kv ::= "\"gender\"" space ":" space string
+victim-info-personal-info-kv ::= "\"personal_info\"" space ":" space victim-info-personal-info
+victim-info-personal-info-language-kv ::= "\"language\"" space ":" space string
+victim-info-personal-info-name-kv ::= "\"name\"" space ":" space string
+victim-info-personal-info-physical-description-kv ::= "\"physical_description\"" space ":" space string
+victim-info-personal-info-rest ::= ( "," space victim-info-medical-info-kv )? victim-info-medical-info-rest
+victim-info-psychological-status ::= "{" space victim-info-psychological-status-stress-level-kv "," space victim-info-psychological-status-special-needs-kv "}" space
+victim-info-psychological-status-kv ::= "\"psychological_status\"" space ":" space victim-info-psychological-status
+victim-info-psychological-status-special-needs-kv ::= "\"special_needs\"" space ":" space string
+victim-info-psychological-status-stress-level ::= ("\"low\"" | "\"moderate\"" | "\"high\"" | "\"severe\"" | "\"unknown\"") space
+victim-info-psychological-status-stress-level-kv ::= "\"stress_level\"" space ":" space victim-info-psychological-status-stress-level
+victim-info-rescue-info ::= "{" space victim-info-rescue-info-last-contact-kv "," space victim-info-rescue-info-rescue-team-eta-kv "," space victim-info-rescue-info-special-rescue-needs-kv "}" space
+victim-info-rescue-info-kv ::= "\"rescue_info\"" space ":" space victim-info-rescue-info
+victim-info-rescue-info-last-contact ::= date-time-string
+victim-info-rescue-info-last-contact-kv ::= "\"last_contact\"" space ":" space victim-info-rescue-info-last-contact
+victim-info-rescue-info-rescue-team-eta-kv ::= "\"rescue_team_eta\"" space ":" space string
+victim-info-rescue-info-rest ::= ( "," space victim-info-environmental-data-kv )? victim-info-environmental-data-rest
+victim-info-rescue-info-special-rescue-needs-kv ::= "\"special_rescue_needs\"" space ":" space string
+victim-info-resources ::= "{" space victim-info-resources-food-status-kv "," space victim-info-resources-water-status-kv "," space victim-info-resources-shelter-status-kv "," space victim-info-resources-communication-devices-kv "}" space
+victim-info-resources-communication-devices ::= "[" space (string ("," space string)*)? "]" space
+victim-info-resources-communication-devices-kv ::= "\"communication_devices\"" space ":" space victim-info-resources-communication-devices
+victim-info-resources-food-status ::= ("\"none\"" | "\"limited\"" | "\"adequate\"" | "\"unknown\"") space
+victim-info-resources-food-status-kv ::= "\"food_status\"" space ":" space victim-info-resources-food-status
+victim-info-resources-kv ::= "\"resources\"" space ":" space victim-info-resources
+victim-info-resources-rest ::= ( "," space victim-info-rescue-info-kv )? victim-info-rescue-info-rest
+victim-info-resources-shelter-status ::= ("\"none\"" | "\"inadequate\"" | "\"adequate\"" | "\"unknown\"") space
+victim-info-resources-shelter-status-kv ::= "\"shelter_status\"" space ":" space victim-info-resources-shelter-status
+victim-info-resources-water-status ::= ("\"none\"" | "\"limited\"" | "\"adequate\"" | "\"unknown\"") space
+victim-info-resources-water-status-kv ::= "\"water_status\"" space ":" space victim-info-resources-water-status
+victim-info-situation ::= "{" space victim-info-situation-disaster-type-kv "," space victim-info-situation-immediate-needs-kv "," space victim-info-situation-trapped-kv "," space victim-info-situation-mobility-kv "," space victim-info-situation-nearby-hazards-kv "}" space
+victim-info-situation-disaster-type-kv ::= "\"disaster_type\"" space ":" space string
+victim-info-situation-immediate-needs ::= "[" space (string ("," space string)*)? "]" space
+victim-info-situation-immediate-needs-kv ::= "\"immediate_needs\"" space ":" space victim-info-situation-immediate-needs
+victim-info-situation-kv ::= "\"situation\"" space ":" space victim-info-situation
+victim-info-situation-mobility ::= ("\"ambulatory\"" | "\"limited\"" | "\"immobile\"" | "\"unknown\"") space
+victim-info-situation-mobility-kv ::= "\"mobility\"" space ":" space victim-info-situation-mobility
+victim-info-situation-nearby-hazards ::= "[" space (string ("," space string)*)? "]" space
+victim-info-situation-nearby-hazards-kv ::= "\"nearby_hazards\"" space ":" space victim-info-situation-nearby-hazards
+victim-info-situation-rest ::= ( "," space victim-info-contact-info-kv )? victim-info-contact-info-rest
+victim-info-situation-trapped-kv ::= "\"trapped\"" space ":" space boolean
+victim-info-social-info ::= "{" space victim-info-social-info-group-size-kv "," space victim-info-social-info-dependents-kv "," space victim-info-social-info-nearby-victims-count-kv "," space victim-info-social-info-can-communicate-verbally-kv "}" space
+victim-info-social-info-can-communicate-verbally-kv ::= "\"can_communicate_verbally\"" space ":" space boolean
+victim-info-social-info-dependents ::= ([0] | [1-9] [0-9]{0,15}) space
+victim-info-social-info-dependents-kv ::= "\"dependents\"" space ":" space victim-info-social-info-dependents
+victim-info-social-info-group-size ::= ([0] | [1-9] [0-9]{0,15}) space
+victim-info-social-info-group-size-kv ::= "\"group_size\"" space ":" space victim-info-social-info-group-size
+victim-info-social-info-kv ::= "\"social_info\"" space ":" space victim-info-social-info
+victim-info-social-info-nearby-victims-count ::= ([0] | [1-9] [0-9]{0,15}) space
+victim-info-social-info-nearby-victims-count-kv ::= "\"nearby_victims_count\"" space ":" space victim-info-social-info-nearby-victims-count
+victim-info-social-info-rest ::= ( "," space victim-info-psychological-status-kv )?`;
+
+// Simple test grammar for debugging
+export const SIMPLE_VICTIM_GRAMMAR = `# Simple victim data grammar for testing
+root ::= object space
+value ::= object | array | string | number | ("true" | "false" | "null") space
+
+object ::= "{" space (
+    string ":" space value ("," space string ":" space value)*
+)? "}" space
+
+array ::= "[" space (
+    value ("," space value)*
+)? "]" space
+
+string ::= "\\"" ([^"\\\\] | "\\\\" (["\\\\/bfnrt] | "u" [0-9a-fA-F]{4}))* "\\"" space
+
+number ::= ("-"? ("0" | [1-9] [0-9]*)) ("." [0-9]+)? ([eE] [-+]? [0-9]+)? space
+
+space ::= [ \\t\\n\\r]*
+`;
+
+// Create a simplified version for easier readability
+export const VICTIM_SCHEMA_DESCRIPTION = `This grammar enforces a structured JSON format for victim information in emergency/rescue scenarios. It includes:
+
+- Personal Information: name, age, gender, language, physical description
+- Location: GPS coordinates, address details, nearest landmarks
+- Medical Information: injuries, pain level (0-10), medical conditions, medications, allergies, blood type
+- Emergency Status: critical, serious, stable, rescued, or unknown
+- Situation Details: disaster type, immediate needs, trapped status, mobility, nearby hazards
+- Contact Information: phone, email, emergency contacts
+- Available Resources: food, water, shelter status, communication devices
+- Rescue Information: last contact time, rescue team ETA, special rescue needs
+- Environmental Data: temperature, humidity, air quality, weather
+- Device Data: battery level, network status
+- Social Information: group size, dependents, nearby victims count
+- Psychological Status: stress level, special needs
+
+The grammar ensures all generated data follows this exact structure, making it suitable for automated parsing and submission to rescue coordination systems.`; 
