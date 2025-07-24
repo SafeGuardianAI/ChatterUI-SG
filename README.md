@@ -92,6 +92,17 @@ Is your API provider missing? ChatterUI allows you to define APIs using its temp
 
 Read more about it [here!](https://github.com/Vali-98/ChatterUI/discussions/126)
 
+## Grammar Constraints
+
+ChatterUI supports grammar-guided generation to ensure AI responses follow specific formats:
+
+- **Upload GBNF files** directly for custom grammar rules
+- **Upload JSON schemas** that automatically convert to GBNF  
+- **Dual generation mode** maintains natural conversation while respecting constraints
+- **Use cases**: JSON output, code generation, structured data, poetry formats
+
+See [Grammar Files Guide](docs/GrammarFiles.md) for detailed instructions and examples.
+
 ## Development
 
 ### Android

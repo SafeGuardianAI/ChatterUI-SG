@@ -6,7 +6,7 @@ import { AppSettings } from '@lib/constants/GlobalValues'
 import { Instructs } from '@lib/state/Instructs'
 import { SamplersManager } from '@lib/state/SamplerState'
 import { useTTSState } from '@lib/state/TTS'
-import { mmkv } from '@lib/storage/MMKV'
+import { mmkvSync as mmkv } from '@lib/storage/MMKV'
 import { useCallback } from 'react'
 import { Characters } from '../state/Characters'
 import { Logger } from '../state/Logger'
@@ -112,11 +112,20 @@ const localDualInference = async (swipeId: number) => {
         
         const phase2Result = await runSingleLocalGeneration()
         
-        // Restore original grammar
+        // Restore original grammar - ensure it persists
+        const state = SamplersManager.useSamplerState.getState()
+        const currentConfigIndex = state.currentConfigIndex
+        const currentConfig = state.configList[currentConfigIndex]
+        
         SamplersManager.useSamplerState.getState().updateCurrentConfig({
-            ...SamplersManager.useSamplerState.getState().configList[SamplersManager.useSamplerState.getState().currentConfigIndex],
-            data: originalSampler
+            ...currentConfig,
+            data: {
+                ...currentConfig.data,
+                grammar_string: originalGrammar
+            }
         })
+        
+        Logger.info(`Grammar restored: ${originalGrammar ? 'enabled' : 'disabled'}`)
         
         // Save only Phase 1 (unconstrained) result to conversation
         Logger.info('Saving unconstrained generation to conversation')
@@ -169,11 +178,20 @@ const remoteDualInference = async (swipeId: number) => {
         
         const phase2Result = await runSingleRemoteGeneration()
         
-        // Restore original grammar
+        // Restore original grammar - ensure it persists  
+        const state = SamplersManager.useSamplerState.getState()
+        const currentConfigIndex = state.currentConfigIndex
+        const currentConfig = state.configList[currentConfigIndex]
+        
         SamplersManager.useSamplerState.getState().updateCurrentConfig({
-            ...SamplersManager.useSamplerState.getState().configList[SamplersManager.useSamplerState.getState().currentConfigIndex],
-            data: originalSampler
+            ...currentConfig,
+            data: {
+                ...currentConfig.data,
+                grammar_string: originalGrammar
+            }
         })
+        
+        Logger.info(`Grammar restored: ${originalGrammar ? 'enabled' : 'disabled'}`)
         
         // Save only Phase 1 (unconstrained) result
         Logger.info('Saving unconstrained generation to conversation')

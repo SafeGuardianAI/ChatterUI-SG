@@ -4,7 +4,7 @@ import { AppSettings } from '@lib/constants/GlobalValues'
 import { Theme } from '@lib/theme/ThemeManager'
 import appConfig from 'app.config'
 import { Text, View } from 'react-native'
-import { useMMKVBoolean } from 'react-native-mmkv'
+import { useMMKVBoolean } from '@lib/storage/MMKV'
 
 import AppModeToggle from './AppModeToggle'
 import RouteList from './RouteList'

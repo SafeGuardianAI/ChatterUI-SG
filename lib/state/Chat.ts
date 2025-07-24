@@ -25,7 +25,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { Characters } from './Characters'
 import { Logger } from './Logger'
 import { AppSettings } from '../constants/GlobalValues'
-import { mmkv } from '../storage/MMKV'
+import { mmkvSync as mmkv } from '../storage/MMKV'
 
 export interface ChatSwipeState extends ChatSwipe {
     token_count?: number

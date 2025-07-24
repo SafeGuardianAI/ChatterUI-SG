@@ -1,3 +1,4 @@
+import ThemedButton from '@components/buttons/ThemedButton'
 import DropdownSheet from '@components/input/DropdownSheet'
 import ThemedCheckbox from '@components/input/ThemedCheckbox'
 import ThemedSlider from '@components/input/ThemedSlider'
@@ -16,8 +17,11 @@ import { Logger } from '@lib/state/Logger'
 import { SamplersManager } from '@lib/state/SamplerState'
 import { Theme } from '@lib/theme/ThemeManager'
 import { saveStringToDownload } from '@lib/utils/File'
+import { convertJsonSchemaToGrammar } from 'cui-llama.rn'
+import { getDocumentAsync } from 'expo-document-picker'
+import { readAsStringAsync } from 'expo-file-system'
 import { useState } from 'react'
-import { ScrollView, StyleSheet, Text } from 'react-native'
+import { ScrollView, StyleSheet, Text, View } from 'react-native'
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useShallow } from 'zustand/react/shallow'
@@ -71,6 +75,189 @@ const SamplerMenu = () => {
     const handleImportSampler = () => {
         //TODO : Implement
         Logger.errorToast('Importing Not Implemented')
+    }
+
+    const handleUploadGBNF = async () => {
+        try {
+            Logger.infoToast('Opening file picker...')
+            
+            const result = await getDocumentAsync({
+                type: ['text/*', 'application/*', '*/*'],
+                copyToCacheDirectory: true,
+                multiple: false,
+            })
+            
+            if (result.canceled) {
+                Logger.infoToast('File selection cancelled')
+                return
+            }
+            
+            if (!result.assets || result.assets.length === 0) {
+                Logger.errorToast('No file selected')
+                return
+            }
+            
+            const file = result.assets[0]
+            const fileName = file.name.toLowerCase()
+            
+            Logger.infoToast(`Selected file: ${file.name}`)
+            
+            if (!fileName.endsWith('.gbnf') && !fileName.endsWith('.txt')) {
+                Logger.errorToast('Please select a .gbnf or .txt file')
+                return
+            }
+            
+            Logger.infoToast('Reading file content...')
+            console.log('Attempting to read file:', file.uri)
+            
+            let grammarContent
+            try {
+                grammarContent = await readAsStringAsync(file.uri)
+            } catch (readError) {
+                console.error('File read error:', readError)
+                Logger.errorToast(`Cannot read file: ${(readError as Error)?.message || String(readError)}`)
+                return
+            }
+            
+            if (!grammarContent || grammarContent.trim().length === 0) {
+                Logger.errorToast('File appears to be empty')
+                return
+            }
+            
+            // Basic GBNF syntax validation
+            const gbnfLines = grammarContent.split('\n')
+            for (let i = 0; i < gbnfLines.length; i++) {
+                const line = gbnfLines[i].trim()
+                if (line && !line.startsWith('#') && line.length > 0) {
+                    // Check if it's a rule definition
+                    if (!line.includes('::=') && !line.match(/^[a-zA-Z_][a-zA-Z0-9_-]*\s*$/)) {
+                        Logger.errorToast(`GBNF syntax warning at line ${i + 1}: May have formatting issues. Check your grammar syntax.`)
+                        console.warn(`GBNF line ${i + 1}: "${line}"`)
+                        // Don't return, just warn
+                    }
+                }
+            }
+            
+            Logger.infoToast('Updating grammar configuration...')
+            updateCurrentConfig({
+                ...currentConfig,
+                data: {
+                    ...currentConfig.data,
+                    grammar_string: grammarContent,
+                },
+            })
+            
+            Logger.infoToast(`Successfully loaded GBNF grammar from ${file.name}`)
+        } catch (error) {
+            console.error('GBNF Upload Error:', error)
+            Logger.errorToast(`Failed to load GBNF file: ${(error as Error)?.message || String(error)}`)
+        }
+    }
+
+    const handleUploadJSON = async () => {
+        try {
+            Logger.infoToast('Opening JSON file picker...')
+            
+            const result = await getDocumentAsync({
+                type: ['application/json', 'text/*', '*/*'],
+                copyToCacheDirectory: true,
+                multiple: false,
+            })
+            
+            if (result.canceled) {
+                Logger.infoToast('File selection cancelled')
+                return
+            }
+            
+            if (!result.assets || result.assets.length === 0) {
+                Logger.errorToast('No file selected')
+                return
+            }
+            
+            const file = result.assets[0]
+            const fileName = file.name.toLowerCase()
+            
+            Logger.infoToast(`Selected file: ${file.name}`)
+            
+            if (!fileName.endsWith('.json')) {
+                Logger.errorToast('Please select a .json file')
+                return
+            }
+            
+            Logger.infoToast('Reading JSON file...')
+            console.log('Attempting to read JSON file:', file.uri)
+            
+            let jsonContent
+            try {
+                jsonContent = await readAsStringAsync(file.uri)
+            } catch (readError) {
+                console.error('JSON file read error:', readError)
+                Logger.errorToast(`Cannot read JSON file: ${(readError as Error)?.message || String(readError)}`)
+                return
+            }
+            
+            if (!jsonContent || jsonContent.trim().length === 0) {
+                Logger.errorToast('JSON file appears to be empty')
+                return
+            }
+            
+            Logger.infoToast('Parsing JSON schema...')
+            let jsonSchema
+            try {
+                jsonSchema = JSON.parse(jsonContent)
+            } catch (parseError) {
+                Logger.errorToast(`Invalid JSON format: ${(parseError as Error)?.message || String(parseError)}`)
+                return
+            }
+            
+            Logger.infoToast('Converting JSON schema to GBNF...')
+            
+            // Validate JSON schema structure
+            if (!jsonSchema || typeof jsonSchema !== 'object') {
+                Logger.errorToast('JSON must be a valid object')
+                return
+            }
+            
+            if (!jsonSchema.type) {
+                Logger.errorToast('JSON schema must have a "type" property (e.g., "object", "array", "string")')
+                return
+            }
+            
+            let grammarContent
+            try {
+                grammarContent = convertJsonSchemaToGrammar(jsonSchema)
+            } catch (conversionError) {
+                console.error('JSON to GBNF conversion error:', conversionError)
+                const errorMsg = (conversionError as Error)?.message || String(conversionError)
+                
+                if (errorMsg.includes('type')) {
+                    Logger.errorToast('Invalid JSON schema: Missing or invalid "type" property. Use "object", "array", "string", "number", "boolean", etc.')
+                } else {
+                    Logger.errorToast(`Conversion failed: ${errorMsg}`)
+                }
+                return
+            }
+            
+            const grammarString = await Promise.resolve(grammarContent)
+            if (!grammarString || grammarString.trim().length === 0) {
+                Logger.errorToast('Conversion resulted in empty grammar')
+                return
+            }
+            
+            Logger.infoToast('Updating grammar configuration...')
+            updateCurrentConfig({
+                ...currentConfig,
+                data: {
+                    ...currentConfig.data,
+                    grammar_string: grammarString,
+                },
+            })
+            
+            Logger.infoToast(`Successfully converted and loaded grammar from ${file.name}`)
+        } catch (error) {
+            console.error('JSON Upload Error:', error)
+            Logger.errorToast(`Failed to process JSON file: ${(error as Error)?.message || String(error)}`)
+        }
     }
 
     const handleDeleteSampler = () => {
@@ -227,20 +414,45 @@ const SamplerMenu = () => {
                                 )
                             case 'textinput':
                                 return (
-                                    <ThemedTextInput
-                                        key={item.samplerID}
-                                        value={currentConfig.data[item.samplerID] as string}
-                                        onChangeText={(text) => {
-                                            updateCurrentConfig({
-                                                ...currentConfig,
-                                                data: {
-                                                    ...currentConfig.data,
-                                                    [item.samplerID]: text,
-                                                },
-                                            })
-                                        }}
-                                        label={samplerItem.friendlyName}
-                                    />
+                                    <View key={item.samplerID}>
+                                        <ThemedTextInput
+                                            value={currentConfig.data[item.samplerID] as string}
+                                            onChangeText={(text) => {
+                                                updateCurrentConfig({
+                                                    ...currentConfig,
+                                                    data: {
+                                                        ...currentConfig.data,
+                                                        [item.samplerID]: text,
+                                                    },
+                                                })
+                                            }}
+                                            label={samplerItem.friendlyName}
+                                            multiline={item.samplerID === 'grammar_string'}
+                                            numberOfLines={item.samplerID === 'grammar_string' ? 8 : 1}
+                                        />
+                                        {item.samplerID === 'grammar_string' && (
+                                            <View style={{ 
+                                                flexDirection: 'row', 
+                                                marginTop: spacing.m, 
+                                                columnGap: spacing.m 
+                                            }}>
+                                                <ThemedButton
+                                                    label="Upload GBNF"
+                                                    iconName="upload"
+                                                    variant="secondary"
+                                                    onPress={handleUploadGBNF}
+                                                    buttonStyle={{ flex: 1 }}
+                                                />
+                                                <ThemedButton
+                                                    label="Upload JSON"
+                                                    iconName="upload"
+                                                    variant="secondary" 
+                                                    onPress={handleUploadJSON}
+                                                    buttonStyle={{ flex: 1 }}
+                                                />
+                                            </View>
+                                        )}
+                                    </View>
                                 )
                             //case 'custom':
                             default:

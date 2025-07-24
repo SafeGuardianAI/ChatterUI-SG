@@ -1,6 +1,5 @@
 import { AppSettings } from '@lib/constants/GlobalValues'
-import { PersistStore } from '@lib/storage/MMKV'
-import { useMMKVBoolean } from 'react-native-mmkv'
+import { PersistStore, useMMKVBoolean } from '@lib/storage/MMKV'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { useShallow } from 'zustand/react/shallow'
