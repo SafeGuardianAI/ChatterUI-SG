@@ -209,16 +209,15 @@ const ChatMenu = () => {
                     {chat && <ChatWindow />}
                     <View
                         style={{
+                            position: 'absolute',
+                            bottom: spacing.xl3,
+                            right: spacing.l,
                             flexDirection: 'row',
                             alignItems: 'center',
-                            justifyContent: 'space-between',
-                            marginVertical: spacing.m,
-                            paddingHorizontal: spacing.l,
+                            gap: spacing.m,
                         }}>
-                        <AvatarViewer />
                         <GrammarToggle />
-                        <OptionsMenu />
-                        <ChatInput />
+                        {/* <OptionsMenu /> */}
                     </View>
                 </KeyboardAvoidingView>
                 {/**Drawer has to be outside of the KeyboardAvoidingView */}

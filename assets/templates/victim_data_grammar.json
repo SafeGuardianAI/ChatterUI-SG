@@ -1,0 +1,30 @@
+{
+    "victim_info": {
+        "name": "<string: full name of the victim>",
+        "age": "<number: age in years>",
+        "gender": "<string: male|female|other>",
+        "physical_description": "<string: height, weight, hair color, eye color, distinguishing features>",
+        "last_known_location": {
+            "latitude": "<number: GPS latitude coordinate>",
+            "longitude": "<number: GPS longitude coordinate>",
+            "address": "<string: street address if known>",
+            "landmark": "<string: nearby landmark or reference point>"
+        },
+        "contact_info": {
+            "phone": "<string: phone number>",
+            "emergency_contact": "<string: emergency contact name and number>",
+            "relationship": "<string: relationship to emergency contact>"
+        }
+    },
+    "medical_info": {
+        "conditions": "<array: list of medical conditions>",
+        "medications": "<array: list of current medications>",
+        "allergies": "<array: list of known allergies>",
+        "blood_type": "<string: blood type if known>",
+        "special_needs": "<string: any special medical needs or requirements>"
+    },
+    "emergency_status": "<string: critical|urgent|stable|unknown>",
+    "rescue_status": "<string: pending|in_progress|completed|cancelled>",
+    "additional_notes": "<string: any additional relevant information>",
+    "update_existing": "<boolean: true to update last victim, false to create new>"
+} 

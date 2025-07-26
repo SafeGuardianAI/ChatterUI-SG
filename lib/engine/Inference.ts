@@ -16,6 +16,10 @@ import { APIState } from './API/APIManagerState'
 import { localInference } from './LocalInference'
 import { Tokenizer } from './Tokenizer'
 import { Llama } from './Local/LlamaLocal'
+import { RescueAPIService, RescueAPISettings, initializeRescueAPISettings } from '@lib/services/RescueAPI'
+
+// Initialize Rescue API settings
+initializeRescueAPISettings()
 
 export const regenerateResponse = async (swipeId: number, regenCache: boolean = true) => {
     const charName = Characters.useCharacterCard.getState().card?.name
@@ -47,6 +51,71 @@ export const continueResponse = async (swipeId: number) => {
     Chats.useChatState.getState().setRegenCache()
     Chats.useChatState.getState().insertLastToBuffer()
     await generateResponse(swipeId)
+}
+
+// Helper function to handle rescue API reporting
+const handleRescueAPIReporting = async (generatedText: string, isGrammarEnabled: boolean) => {
+    if (!isGrammarEnabled || !mmkv.getBoolean(RescueAPISettings.Enabled)) {
+        return
+    }
+
+    try {
+        const rescueAPI = RescueAPIService.getInstance()
+        await rescueAPI.initialize()
+
+        // Parse the AI response
+        const victimData = rescueAPI.parseAIResponse(generatedText)
+        
+        if (victimData && rescueAPI.validateVictimData(victimData)) {
+            Logger.info('Valid victim data detected, sending to Rescue API')
+            
+            // Check if we have an existing victim to update
+            const lastVictimNumber = mmkv.getString(RescueAPISettings.LastVictimNumber)
+            
+            // Always update if we have a victim number stored, unless explicitly told to create new
+            if (lastVictimNumber && victimData.create_new !== true) {
+                Logger.info(`Updating existing victim: ${lastVictimNumber}`)
+                
+                // Add timestamp for update
+                if (victimData.victim_info) {
+                    victimData.victim_info.last_updated = new Date().toISOString()
+                }
+                
+                // Update existing victim
+                const result = await rescueAPI.updateVictim(lastVictimNumber, victimData)
+                if (result && result !== 'Invalid victim number format') {
+                    Logger.infoToast(`Victim ${lastVictimNumber} updated successfully`)
+                } else {
+                    Logger.error(`Failed to update victim ${lastVictimNumber}: ${result}`)
+                    // If update fails, try creating new
+                    const victimNumber = await rescueAPI.postVictim(victimData)
+                    if (victimNumber) {
+                        mmkv.set(RescueAPISettings.LastVictimNumber, victimNumber)
+                        Logger.infoToast(`New victim reported: ${victimNumber}`)
+                    }
+                }
+            } else {
+                // Create new victim report
+                Logger.info('Creating new victim report')
+                
+                // Add timestamp for creation
+                if (victimData.victim_info) {
+                    victimData.victim_info.timestamp = new Date().toISOString()
+                    victimData.victim_info.last_updated = new Date().toISOString()
+                }
+                
+                const victimNumber = await rescueAPI.postVictim(victimData)
+                if (victimNumber) {
+                    mmkv.set(RescueAPISettings.LastVictimNumber, victimNumber)
+                    Logger.infoToast(`New victim reported: ${victimNumber}`)
+                }
+            }
+        } else {
+            Logger.debug('No valid victim data found in AI response')
+        }
+    } catch (error) {
+        Logger.error(`Failed to send data to Rescue API: ${error}`)
+    }
 }
 
 // Add new dual-generation function
@@ -87,7 +156,31 @@ const localDualInference = async (swipeId: number) => {
         // Store original grammar
         const originalSampler = SamplersManager.getCurrentSampler()
         const originalGrammar = originalSampler.grammar_string
+        const hasGrammar = !!(originalGrammar && String(originalGrammar).trim().length > 0)
+        const rescueAPIEnabled = mmkv.getBoolean(RescueAPISettings.Enabled) ?? false
         
+        // If Rescue API is enabled and we have grammar, skip Phase 1
+        if (rescueAPIEnabled && hasGrammar) {
+            Logger.info('Rescue API enabled with grammar - generating only grammar-constrained response')
+            
+            // Generate with grammar
+            const grammarResult = await runSingleLocalGeneration()
+            
+            // Handle Rescue API reporting
+            await handleRescueAPIReporting(grammarResult, hasGrammar)
+            
+            // Save grammar-constrained result to conversation
+            const regenCache = Chats.useChatState.getState().getRegenCache()
+            Chats.useChatState.getState().setBuffer({ 
+                data: regenCache + grammarResult, 
+                timings: undefined 
+            })
+            
+            useInference.getState().stopGenerating()
+            return
+        }
+        
+        // Otherwise, do the original dual generation
         // Phase 1: Generate without grammar
         Logger.info('Phase 1: Generating without grammar constraints')
         SamplersManager.useSamplerState.getState().updateCurrentConfig({
@@ -131,6 +224,9 @@ const localDualInference = async (swipeId: number) => {
         Logger.info('Saving unconstrained generation to conversation')
         Logger.info(`Grammar-guided generation (reference): ${phase2Result.substring(0, 100)}...`)
         
+        // Handle Rescue API reporting with the grammar-guided result
+        await handleRescueAPIReporting(phase2Result, hasGrammar)
+        
         const regenCache = Chats.useChatState.getState().getRegenCache()
         Chats.useChatState.getState().setBuffer({ 
             data: regenCache + phase1Result, 
@@ -153,7 +249,31 @@ const remoteDualInference = async (swipeId: number) => {
         // Store original grammar
         const originalSampler = SamplersManager.getCurrentSampler()
         const originalGrammar = originalSampler.grammar_string
+        const hasGrammar = !!(originalGrammar && String(originalGrammar).trim().length > 0)
+        const rescueAPIEnabled = mmkv.getBoolean(RescueAPISettings.Enabled) ?? false
         
+        // If Rescue API is enabled and we have grammar, skip Phase 1
+        if (rescueAPIEnabled && hasGrammar) {
+            Logger.info('Rescue API enabled with grammar - generating only grammar-constrained response')
+            
+            // Generate with grammar
+            const grammarResult = await runSingleRemoteGeneration()
+            
+            // Handle Rescue API reporting
+            await handleRescueAPIReporting(grammarResult, hasGrammar)
+            
+            // Save grammar-constrained result to conversation
+            const regenCache = Chats.useChatState.getState().getRegenCache()
+            Chats.useChatState.getState().setBuffer({ 
+                data: regenCache + grammarResult, 
+                timings: undefined 
+            })
+            
+            useInference.getState().stopGenerating()
+            return
+        }
+        
+        // Otherwise, do the original dual generation
         // Phase 1: Generate without grammar
         Logger.info('Phase 1: Generating without grammar constraints')
         SamplersManager.useSamplerState.getState().updateCurrentConfig({
@@ -196,6 +316,9 @@ const remoteDualInference = async (swipeId: number) => {
         // Save only Phase 1 (unconstrained) result
         Logger.info('Saving unconstrained generation to conversation')
         Logger.info(`Grammar-guided generation (reference): ${phase2Result.substring(0, 100)}...`)
+        
+        // Handle Rescue API reporting with the grammar-guided result
+        await handleRescueAPIReporting(phase2Result, hasGrammar)
         
         const regenCache = Chats.useChatState.getState().getRegenCache()
         Chats.useChatState.getState().setBuffer({ 
