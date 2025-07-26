@@ -5,11 +5,12 @@ import Alert from '@components/views/Alert'
 import ThemedTextInput from '@components/input/ThemedTextInput'
 import Accordion from '@components/views/Accordion'
 import ThemedCheckbox from '@components/input/ThemedCheckbox'
-import { RescueAPIService, RescueAPISettings, BackendType } from '@lib/services/RescueAPI'
-import { mmkv } from '@lib/storage/MMKV'
+import { RescueAPIService, BackendType } from '@lib/services/RescueAPI'
+import { useRescueAPISettings } from '@lib/state/RescueAPISettings'
+import { sqliteStorageSync } from '@lib/storage/SQLiteStorage'
 import { Logger } from '@lib/state/Logger'
 import { Theme } from '@lib/theme/ThemeManager'
-import React, { useState, useEffect } from 'react'
+import React, { useEffect } from 'react'
 import { View, ScrollView, StyleSheet } from 'react-native'
 import { SamplersManager } from '@lib/state/SamplerState'
 import { VICTIM_SCHEMA_GRAMMAR, VICTIM_SCHEMA_DESCRIPTION, SIMPLE_VICTIM_GRAMMAR } from '@lib/constants/VictimGrammar'
@@ -20,13 +21,26 @@ const GRAMMAR_CACHE_KEY = 'cached_grammar_content'
 
 const RescueAPISettingsMenu = () => {
     const { color, spacing, borderRadius } = Theme.useTheme()
-    const [enabled, setEnabled] = useState(mmkv.getBoolean(RescueAPISettings.Enabled) ?? false)
-    const [firebaseEnabled, setFirebaseEnabled] = useState(mmkv.getBoolean(RescueAPISettings.FirebaseEnabled) ?? false)
-    const [mongodbEnabled, setMongodbEnabled] = useState(mmkv.getBoolean(RescueAPISettings.MongoDBEnabled) ?? true)
-    const [endpoint, setEndpoint] = useState(mmkv.getString(RescueAPISettings.Endpoint) ?? '')
-    const [autoReport, setAutoReport] = useState(mmkv.getBoolean(RescueAPISettings.AutoReport) ?? true)
-    const [lastVictimNumber, setLastVictimNumber] = useState(mmkv.getString(RescueAPISettings.LastVictimNumber) ?? '')
-    const [customGrammarPath, setCustomGrammarPath] = useState(mmkv.getString('rescue_api_custom_grammar_path') ?? '')
+    
+    // Use Zustand state instead of local state
+    const {
+        enabled,
+        firebaseEnabled,
+        mongodbEnabled,
+        endpoint,
+        autoReport,
+        lastVictimNumber,
+        customGrammarPath,
+        setEnabled,
+        setFirebaseEnabled,
+        setMongodbEnabled,
+        setEndpoint,
+        setAutoReport,
+        setLastVictimNumber,
+        setCustomGrammarPath,
+        clearLastVictimNumber,
+        clearCustomGrammarPath,
+    } = useRescueAPISettings()
 
     useEffect(() => {
         // Initialize the rescue API if enabled
@@ -39,15 +53,8 @@ const RescueAPISettingsMenu = () => {
 
     const handleToggleEnabled = (value: boolean) => {
         setEnabled(value)
-        mmkv.set(RescueAPISettings.Enabled, value)
         
         if (value) {
-            // Ensure at least one backend is enabled
-            if (!firebaseEnabled && !mongodbEnabled) {
-                setMongodbEnabled(true)
-                mmkv.set(RescueAPISettings.MongoDBEnabled, true)
-            }
-            
             Logger.infoToast('Rescue API enabled')
             
             // Check if there's already a grammar loaded
@@ -70,7 +77,7 @@ const RescueAPISettingsMenu = () => {
                     
                     state.updateCurrentConfig(updatedConfig)
                     // Cache the grammar for toggle
-                    mmkv.set(GRAMMAR_CACHE_KEY, VICTIM_SCHEMA_GRAMMAR)
+                    sqliteStorageSync.set(GRAMMAR_CACHE_KEY, VICTIM_SCHEMA_GRAMMAR)
                     Logger.infoToast('Victim grammar loaded automatically')
                 }
             } else {
@@ -94,7 +101,7 @@ const RescueAPISettingsMenu = () => {
                                     
                                     state.updateCurrentConfig(updatedConfig)
                                     // Cache the grammar for toggle
-                                    mmkv.set(GRAMMAR_CACHE_KEY, VICTIM_SCHEMA_GRAMMAR)
+                                    sqliteStorageSync.set(GRAMMAR_CACHE_KEY, VICTIM_SCHEMA_GRAMMAR)
                                     Logger.infoToast('Victim grammar loaded successfully')
                                 }
                             },
@@ -110,50 +117,30 @@ const RescueAPISettingsMenu = () => {
 
     const handleFirebaseToggle = (value: boolean) => {
         setFirebaseEnabled(value)
-        mmkv.set(RescueAPISettings.FirebaseEnabled, value)
         
         if (value) {
             Logger.infoToast('Firebase backend enabled')
-            // Disable MongoDB if Firebase is enabled
-            if (mongodbEnabled) {
-                setMongodbEnabled(false)
-                mmkv.set(RescueAPISettings.MongoDBEnabled, false)
-            }
         } else if (!mongodbEnabled) {
-            // Ensure at least one backend is enabled
-            setMongodbEnabled(true)
-            mmkv.set(RescueAPISettings.MongoDBEnabled, true)
             Logger.infoToast('MongoDB backend enabled (at least one backend required)')
         }
     }
 
     const handleMongoDBToggle = (value: boolean) => {
         setMongodbEnabled(value)
-        mmkv.set(RescueAPISettings.MongoDBEnabled, value)
         
         if (value) {
             Logger.infoToast('MongoDB backend enabled')
-            // Disable Firebase if MongoDB is enabled
-            if (firebaseEnabled) {
-                setFirebaseEnabled(false)
-                mmkv.set(RescueAPISettings.FirebaseEnabled, false)
-            }
         } else if (!firebaseEnabled) {
-            // Ensure at least one backend is enabled
-            setFirebaseEnabled(true)
-            mmkv.set(RescueAPISettings.FirebaseEnabled, true)
             Logger.infoToast('Firebase backend enabled (at least one backend required)')
         }
     }
 
     const handleEndpointChange = (value: string) => {
         setEndpoint(value)
-        mmkv.set(RescueAPISettings.Endpoint, value)
     }
 
     const handleAutoReportToggle = (value: boolean) => {
         setAutoReport(value)
-        mmkv.set(RescueAPISettings.AutoReport, value)
     }
 
     const testConnection = async () => {
@@ -243,7 +230,7 @@ const RescueAPISettingsMenu = () => {
                             
                             state.updateCurrentConfig(updatedConfig)
                             // Cache the grammar for toggle
-                            mmkv.set(GRAMMAR_CACHE_KEY, VICTIM_SCHEMA_GRAMMAR)
+                            sqliteStorageSync.set(GRAMMAR_CACHE_KEY, VICTIM_SCHEMA_GRAMMAR)
                             Logger.infoToast('Default victim grammar loaded successfully')
                         }
                     },
@@ -253,7 +240,7 @@ const RescueAPISettingsMenu = () => {
         })
     }
 
-    const clearLastVictim = () => {
+    const handleClearLastVictim = () => {
         Alert.alert({
             title: 'Create New Victim',
             description: 'This will start tracking a new victim. The next report will create a new victim record instead of updating the existing one. Continue?',
@@ -262,8 +249,7 @@ const RescueAPISettingsMenu = () => {
                 {
                     label: 'Create New',
                     onPress: () => {
-                        mmkv.delete(RescueAPISettings.LastVictimNumber)
-                        setLastVictimNumber('')
+                        clearLastVictimNumber()
                         Logger.infoToast('Ready to create new victim')
                     },
                     type: 'warning'
@@ -295,7 +281,7 @@ const RescueAPISettingsMenu = () => {
                             
                             state.updateCurrentConfig(updatedConfig)
                             // Cache the grammar for toggle
-                            mmkv.set(GRAMMAR_CACHE_KEY, VICTIM_SCHEMA_GRAMMAR)
+                            sqliteStorageSync.set(GRAMMAR_CACHE_KEY, VICTIM_SCHEMA_GRAMMAR)
                             Logger.infoToast('Default victim grammar (victim_schema.gbnf) loaded successfully')
                         },
                         type: 'default'
@@ -328,7 +314,7 @@ const RescueAPISettingsMenu = () => {
                             
                             state.updateCurrentConfig(updatedConfig)
                             // Cache the grammar for toggle
-                            mmkv.set(GRAMMAR_CACHE_KEY, SIMPLE_VICTIM_GRAMMAR)
+                            sqliteStorageSync.set(GRAMMAR_CACHE_KEY, SIMPLE_VICTIM_GRAMMAR)
                             Logger.infoToast('Simple test grammar loaded successfully')
                         },
                         type: 'default'
@@ -381,7 +367,6 @@ const RescueAPISettingsMenu = () => {
 
             // Store the grammar path
             setCustomGrammarPath(file.name)
-            mmkv.set('rescue_api_custom_grammar_path', file.name)
 
             // Apply the grammar
             const state = SamplersManager.useSamplerState.getState()
@@ -398,7 +383,7 @@ const RescueAPISettingsMenu = () => {
                 
                 state.updateCurrentConfig(updatedConfig)
                 // Cache the grammar for toggle
-                mmkv.set(GRAMMAR_CACHE_KEY, grammarContent)
+                sqliteStorageSync.set(GRAMMAR_CACHE_KEY, grammarContent)
                 Logger.infoToast(`Custom grammar loaded: ${file.name}`)
             }
         } catch (error) {
@@ -406,7 +391,7 @@ const RescueAPISettingsMenu = () => {
         }
     }
 
-    const clearCustomGrammar = () => {
+    const handleClearCustomGrammar = () => {
         Alert.alert({
             title: 'Clear Custom Grammar',
             description: 'This will remove the custom grammar reference. You can load the default victim grammar or select a new file.',
@@ -415,8 +400,7 @@ const RescueAPISettingsMenu = () => {
                 {
                     label: 'Clear',
                     onPress: () => {
-                        setCustomGrammarPath('')
-                        mmkv.delete('rescue_api_custom_grammar_path')
+                        clearCustomGrammarPath()
                         Logger.infoToast('Custom grammar cleared')
                     },
                     type: 'warning'
@@ -531,7 +515,7 @@ const RescueAPISettingsMenu = () => {
                                     The system will update this victim by default. Use the buttons below to control this behavior.
                                 </TText>
                                 <View style={styles.buttonContainer}>
-                                    <ThemedButton label="Create New Victim" onPress={clearLastVictim} />
+                                    <ThemedButton label="Create New Victim" onPress={handleClearLastVictim} />
                                     <ThemedButton 
                                         label="Keep Updating"
                                         onPress={() => {
@@ -659,7 +643,7 @@ const RescueAPISettingsMenu = () => {
                             <View style={styles.buttonContainer}>
                                 <ThemedButton label="Load Grammar File" onPress={loadCustomGrammarFile} variant="primary" />
                                 {customGrammarPath && (
-                                    <ThemedButton label="Clear Custom" onPress={clearCustomGrammar} variant="secondary" />
+                                    <ThemedButton label="Clear Custom" onPress={handleClearCustomGrammar} variant="secondary" />
                                 )}
                             </View>
                             

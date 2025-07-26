@@ -1,13 +1,20 @@
 import { AlertBox } from '@components/views/Alert'
 import { rawdb } from '@db'
 import { Theme } from '@lib/theme/ThemeManager'
+import { SQLiteStorage } from '@lib/storage/SQLiteStorage'
 import { useDrizzleStudio } from 'expo-drizzle-studio-plugin'
 import { SplashScreen, Stack } from 'expo-router'
 import { setOptions } from 'expo-splash-screen'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { MenuProvider } from 'react-native-popup-menu'
 import { KeyboardProvider } from 'react-native-keyboard-controller'
+
 SplashScreen.preventAutoHideAsync()
+
+// Initialize SQLite storage cache
+SQLiteStorage.loadCache().catch(error => {
+    console.error('Failed to initialize SQLite storage cache:', error)
+})
 setOptions({
     fade: true,
     duration: 350,

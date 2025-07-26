@@ -78,7 +78,7 @@ const GrammarToggle = () => {
                 // Load cached grammar if no current grammar
                 if (!hasContent && !cachedGrammarRef.current) {
                     const cached = mmkv.getString(GRAMMAR_CACHE_KEY)
-                    if (cached) {
+                    if (typeof cached === 'string') {
                         cachedGrammarRef.current = cached
                         setGrammarContent(cached)
                     }
