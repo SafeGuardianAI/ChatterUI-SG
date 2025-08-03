@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons'
 import Alert from '@components/views/Alert'
-import ThemedButton from '@components/buttons/ThemedButton'
 import { Logger } from '@lib/state/Logger'
 import { SamplersManager } from '@lib/state/SamplerState'
 import { Theme } from '@lib/theme/ThemeManager'
+import { GrammarHelper, useGrammarEngine } from '@lib/engine/Grammar'
 import React, { useEffect, useState, useRef } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 import { mmkv } from '@lib/storage/MMKV'
@@ -12,20 +12,29 @@ import { VICTIM_SCHEMA_GRAMMAR } from '@lib/constants/VictimGrammar'
 const GRAMMAR_CACHE_KEY = 'cached_grammar_content'
 const DEFAULT_GRAMMAR_LOADED_KEY = 'default_grammar_loaded'
 
-const GrammarToggle = () => {
+const GrammarToggleEnhanced = () => {
     const { color, spacing, borderRadius } = Theme.useTheme()
     const [isEnabled, setIsEnabled] = useState(false)
     const [hasGrammar, setHasGrammar] = useState(false)
     const [grammarContent, setGrammarContent] = useState('')
     const [isGenerating, setIsGenerating] = useState(false)
-    const [validationStatus, setValidationStatus] = useState<'unknown' | 'valid' | 'invalid'>('unknown')
     const cachedGrammarRef = useRef<string>('')
+
+    // Use new grammar engine hook
+    const {
+        isInitialized,
+        currentEngine,
+        llguidanceAvailable,
+        generateWithGrammar,
+        validateGrammar,
+        updateEngine
+    } = useGrammarEngine()
 
     // Load default grammar on first run
     useEffect(() => {
-        const loadDefaultGrammarIfNeeded = () => {
-            const hasLoadedDefault = mmkv.getBoolean(DEFAULT_GRAMMAR_LOADED_KEY)
-            const hasCachedGrammar = mmkv.getString(GRAMMAR_CACHE_KEY)
+        const loadDefaultGrammarIfNeeded = async () => {
+            const hasLoadedDefault = await mmkv.getBoolean(DEFAULT_GRAMMAR_LOADED_KEY)
+            const hasCachedGrammar = await mmkv.getString(GRAMMAR_CACHE_KEY)
             
             if (!hasLoadedDefault && !hasCachedGrammar) {
                 // First time running, load default victim grammar
@@ -35,6 +44,12 @@ const GrammarToggle = () => {
                 const currentConfig = state.configList[state.currentConfigIndex]
                 
                 if (currentConfig) {
+                    // Validate grammar with new system
+                    const validation = validateGrammar(VICTIM_SCHEMA_GRAMMAR)
+                    if (!validation.valid) {
+                        Logger.warn('Default grammar validation failed:', validation.errors)
+                    }
+
                     const updatedConfig = {
                         ...currentConfig,
                         data: {
@@ -44,22 +59,24 @@ const GrammarToggle = () => {
                     }
                     
                     state.updateCurrentConfig(updatedConfig)
-                    mmkv.set(GRAMMAR_CACHE_KEY, VICTIM_SCHEMA_GRAMMAR)
-                    mmkv.set(DEFAULT_GRAMMAR_LOADED_KEY, true)
+                    await mmkv.set(GRAMMAR_CACHE_KEY, VICTIM_SCHEMA_GRAMMAR)
+                    await mmkv.set(DEFAULT_GRAMMAR_LOADED_KEY, true)
                     cachedGrammarRef.current = VICTIM_SCHEMA_GRAMMAR
                     setGrammarContent(VICTIM_SCHEMA_GRAMMAR)
                     setHasGrammar(true)
                     setIsEnabled(true)
                     
-                    Logger.infoToast('Default victim grammar loaded')
+                    Logger.infoToast(`Default victim grammar loaded (${currentEngine} engine)`)
                 }
             }
         }
 
-        // Run after a short delay to ensure the app is fully initialized
-        const timer = setTimeout(loadDefaultGrammarIfNeeded, 500)
-        return () => clearTimeout(timer)
-    }, [])
+        if (isInitialized) {
+            // Run after a short delay to ensure the app is fully initialized
+            const timer = setTimeout(loadDefaultGrammarIfNeeded, 500)
+            return () => clearTimeout(timer)
+        }
+    }, [isInitialized, currentEngine, validateGrammar])
 
     // Check current grammar state
     useEffect(() => {
@@ -76,9 +93,14 @@ const GrammarToggle = () => {
                     cachedGrammarRef.current = grammarString
                     mmkv.set(GRAMMAR_CACHE_KEY, grammarString)
                     setGrammarContent(grammarString)
-                    
-                    // Validate the grammar
-                    validateGrammarContent(grammarString)
+
+                    // Validate grammar with new system
+                    if (isInitialized) {
+                        const validation = validateGrammar(grammarString)
+                        if (!validation.valid) {
+                            Logger.debug('Grammar validation warnings:', validation.errors)
+                        }
+                    }
                 }
                 
                 // Load cached grammar if no current grammar
@@ -100,7 +122,7 @@ const GrammarToggle = () => {
         // Subscribe to sampler state changes
         const unsubscribe = SamplersManager.useSamplerState.subscribe(checkGrammarState)
         return unsubscribe
-    }, [])
+    }, [isInitialized, validateGrammar])
 
     const toggleGrammar = () => {
         const state = SamplersManager.useSamplerState.getState()
@@ -139,94 +161,16 @@ const GrammarToggle = () => {
         state.updateCurrentConfig(updatedConfig)
         setIsEnabled(!isEnabled)
         
-        // Show feedback
+        // Enhanced feedback with engine and availability info
         if (isEnabled) {
+            Logger.info('🔄 Grammar constraints DISABLED by user')
             Logger.infoToast('Grammar constraints disabled')
         } else {
-            Logger.infoToast('Grammar constraints enabled')
+            Logger.info(`🔥 Grammar constraints ENABLED by user`)
+            Logger.info(`🎯 Active Engine: ${currentEngine} | LLguidance Available: ${llguidanceAvailable}`)
+            Logger.info(`📝 Grammar Content Length: ${newGrammarValue.length} chars`)
+            Logger.infoToast(`Grammar constraints enabled (${currentEngine} engine)`)
         }
-    }
-
-    // Enhanced validation functions
-    const validateGrammarContent = (content: string) => {
-        if (!content.trim()) {
-            setValidationStatus('unknown')
-            return
-        }
-
-        try {
-            let validation
-            if (content.includes('::=')) {
-                // GBNF validation
-                validation = validateGBNF(content)
-            } else {
-                try {
-                    const schema = JSON.parse(content)
-                    validation = validateJsonSchema(schema)
-                } catch {
-                    setValidationStatus('invalid')
-                    return
-                }
-            }
-            
-            setValidationStatus(validation.valid ? 'valid' : 'invalid')
-        } catch {
-            setValidationStatus('invalid')
-        }
-    }
-
-    const validateGBNF = (content: string): { valid: boolean, errors: string[] } => {
-        const errors: string[] = []
-        
-        if (!content.trim()) {
-            errors.push('Grammar content cannot be empty')
-            return { valid: false, errors }
-        }
-
-        if (!content.includes('::=')) {
-            errors.push('GBNF grammar must contain rule definitions (::=)')
-        }
-
-        if (!content.includes('root ::=')) {
-            errors.push('GBNF grammar should have a root rule')
-        }
-
-        // Basic syntax validation
-        const lines = content.split('\n')
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim()
-            if (line && !line.startsWith('#') && line.length > 0) {
-                if (line.includes('::=')) {
-                    const ruleName = line.split('::=')[0].trim()
-                    if (!/^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(ruleName)) {
-                        errors.push(`Line ${i + 1}: Invalid rule name '${ruleName}'`)
-                    }
-                }
-            }
-        }
-
-        return { valid: errors.length === 0, errors }
-    }
-
-    const validateJsonSchema = (schema: any): { valid: boolean, errors: string[], warnings?: string[] } => {
-        const errors: string[] = []
-        const warnings: string[] = []
-
-        if (!schema || typeof schema !== 'object') {
-            errors.push('Schema must be a valid object')
-            return { valid: false, errors }
-        }
-
-        if (!schema.type) {
-            errors.push('Schema must have a "type" property')
-        }
-
-        const supportedTypes = ['object', 'array', 'string', 'number', 'integer', 'boolean', 'null']
-        if (schema.type && !supportedTypes.includes(schema.type)) {
-            errors.push(`Unsupported type: ${schema.type}`)
-        }
-
-        return { valid: errors.length === 0, errors, warnings }
     }
 
     const testGrammarGeneration = async () => {
@@ -238,19 +182,20 @@ const GrammarToggle = () => {
         setIsGenerating(true)
         
         try {
-            // This is a simple test - in a full implementation, 
-            // this would call the actual generation pipeline
-            Logger.infoToast('🧪 Grammar test started... (This is a simulation)')
+            const testPrompt = 'Generate a sample output following the grammar:'
             
-            // Simulate generation time
-            await new Promise(resolve => setTimeout(resolve, 1500))
-            
-            const grammarType = grammarContent.includes('::=') ? 'GBNF' : 'JSON Schema'
-            const testResult = `Test generation completed using ${grammarType} grammar.`
-            
+            const result = await generateWithGrammar(
+                testPrompt,
+                grammarContent,
+                { 
+                    temperature: 0.7, 
+                    maxTokens: 100 
+                }
+            )
+
             Alert.alert({
                 title: 'Grammar Test Result',
-                description: `✅ ${testResult}\n\nGrammar appears to be working correctly. This was a simulation - actual generation will use your configured model.`,
+                description: `Engine: ${currentEngine.toUpperCase()}\n\nGenerated:\n${result}`,
                 buttons: [{ label: 'OK' }]
             })
         } catch (error) {
@@ -266,17 +211,14 @@ const GrammarToggle = () => {
             ? displayGrammar.substring(0, 200) + '...'
             : displayGrammar
 
-        // Determine grammar type and validation status
-        const grammarType = displayGrammar.includes('::=') ? 'GBNF' : 
-                           displayGrammar.startsWith('{') ? 'JSON Schema' : 'Unknown'
-        
-        const validationIcon = validationStatus === 'valid' ? '✅' : 
-                              validationStatus === 'invalid' ? '❌' : '❓'
-        
-        const statusInfo = `Status: ${isEnabled ? 'Enabled' : 'Disabled'}\n` +
-                          `Type: ${grammarType}\n` +
-                          `Validation: ${validationIcon} ${validationStatus}\n` +
-                          `Engine: GBNF (Enhanced)`
+        // Get validation info
+        let validationInfo = ''
+        if (displayGrammar && isInitialized) {
+            const validation = validateGrammar(displayGrammar)
+            validationInfo = validation.valid 
+                ? '\n✅ Grammar is valid' 
+                : `\n⚠️ Grammar issues: ${validation.errors.join(', ')}`
+        }
 
         const buttons: any[] = [
             { label: 'Close' },
@@ -289,10 +231,9 @@ const GrammarToggle = () => {
             })
         }
 
-        // Add test button if grammar is enabled
-        if (isEnabled && grammarContent) {
+        if (isEnabled && currentEngine) {
             buttons.push({
-                label: '🧪 Test Grammar',
+                label: 'Test Grammar',
                 onPress: testGrammarGeneration,
                 type: 'default'
             })
@@ -307,9 +248,15 @@ const GrammarToggle = () => {
             })
         }
 
+        const engineStatus = llguidanceAvailable === null 
+            ? 'Checking...' 
+            : llguidanceAvailable 
+                ? 'LLguidance Available' 
+                : 'GBNF Only'
+
         Alert.alert({
-            title: 'Enhanced Grammar Constraints',
-            description: `${statusInfo}\n\n${isEnabled ? 'When enabled, the model will generate responses constrained by the grammar rules. Enhanced validation and testing features are available.\n\n' : 'Grammar is cached and can be re-enabled without re-uploading. Enhanced validation ensures grammar correctness.\n\n'}${grammarPreview || 'No grammar rules defined.'}`,
+            title: 'Grammar Constraints',
+            description: `Status: ${isEnabled ? 'Enabled' : 'Disabled'}\nEngine: ${currentEngine ? currentEngine.toUpperCase() : 'Loading...'}\nCapabilities: ${engineStatus}${validationInfo}\n\n${isEnabled ? 'When enabled, the model will generate responses constrained by the grammar rules.\n\n' : 'Grammar is cached and can be re-enabled without re-uploading.\n\n'}${grammarPreview || 'No grammar rules defined.'}`,
             buttons,
         })
     }
@@ -336,6 +283,21 @@ const GrammarToggle = () => {
         })
     }
 
+    // Engine indicator
+    const getEngineIndicator = () => {
+        if (!isInitialized) return '...'
+        if (currentEngine === 'auto') return '🤖'
+        if (currentEngine === 'llguidance') return '⚡'
+        return '📝' // GBNF
+    }
+
+    const getEngineColor = () => {
+        if (!isInitialized) return color.text._400
+        if (currentEngine === 'llguidance' && llguidanceAvailable) return color.primary._600
+        if (currentEngine === 'auto') return color.primary._500
+        return color.text._600
+    }
+
     return (
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity
@@ -356,9 +318,10 @@ const GrammarToggle = () => {
                 }}
                 onPress={toggleGrammar}
                 onLongPress={showGrammarInfo}
-                activeOpacity={0.7}>
+                activeOpacity={0.7}
+                disabled={isGenerating}>
                 <Ionicons
-                    name={isEnabled ? 'checkmark-circle' : 'close-circle'}
+                    name={isGenerating ? 'hourglass' : isEnabled ? 'checkmark-circle' : 'close-circle'}
                     size={16}
                     color={isEnabled ? color.neutral._100 : color.text._400}
                     style={{ marginRight: spacing.xs }}
@@ -371,54 +334,23 @@ const GrammarToggle = () => {
                     }}>
                     Beacon Mode
                 </Text>
-                {/* Enhanced validation indicator */}
-                {isEnabled && validationStatus !== 'unknown' && (
-                    <Text style={{
-                        color: isEnabled ? color.neutral._100 : color.text._400,
-                        fontSize: 10,
-                        marginLeft: spacing.xs,
-                    }}>
-                        {validationStatus === 'valid' ? '✓' : '⚠'}
-                    </Text>
-                )}
             </TouchableOpacity>
             
-            {/* Quick Test Button - Only show when enabled and has grammar */}
-            {isEnabled && grammarContent && !isGenerating && (
-                <TouchableOpacity
-                    onPress={testGrammarGeneration}
-                    style={{
-                        padding: spacing.xs,
-                        backgroundColor: color.primary._200,
-                        borderRadius: borderRadius.s,
-                        marginLeft: spacing.xs,
-                    }}
-                >
-                    <Ionicons
-                        name="flask"
-                        size={14}
-                        color={color.primary._700}
-                    />
-                </TouchableOpacity>
-            )}
-            
-            {/* Generation indicator */}
-            {isGenerating && (
-                <View style={{
-                    marginLeft: spacing.xs,
+            {/* Engine indicator */}
+            <TouchableOpacity
+                onPress={showGrammarInfo}
+                style={{
                     padding: spacing.xs,
                 }}>
-                    <Text style={{
-                        fontSize: 10,
-                        color: color.primary._600,
-                        fontWeight: '500',
-                    }}>
-                        Testing...
-                    </Text>
-                </View>
-            )}
+                <Text style={{
+                    fontSize: 16,
+                    color: getEngineColor(),
+                }}>
+                    {getEngineIndicator()}
+                </Text>
+            </TouchableOpacity>
         </View>
     )
 }
 
-export default GrammarToggle 
+export default GrammarToggleEnhanced

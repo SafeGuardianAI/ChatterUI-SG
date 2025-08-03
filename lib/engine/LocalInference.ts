@@ -309,6 +309,20 @@ const runLocalCompletion = async (payload: Awaited<ReturnType<typeof buildLocalP
         stopGenerating()
     }
 
+    // Enhanced grammar logging for inference tracking
+    const grammarString = (payload as any).grammar || ''
+    const hasGrammar = grammarString.trim().length > 0
+    
+    if (hasGrammar) {
+        Logger.info(`🔥 INFERENCE START: Traditional GBNF engine (cui-llama.rn)`)
+        Logger.info(`📋 Grammar Type: GBNF | Engine: cui-llama.rn native`)
+        Logger.info(`📝 Grammar Length: ${grammarString.length} chars`)
+        Logger.debug(`📝 Grammar Preview: ${grammarString.substring(0, 100)}${grammarString.length > 100 ? '...' : ''}`)
+    } else {
+        Logger.info(`🔥 INFERENCE START: No grammar constraints`)
+    }
+    
+    const startTime = Date.now()
     await Llama.useLlama
         .getState()
         .completion(payload, outputStream, outputCompleted)
@@ -316,6 +330,11 @@ const runLocalCompletion = async (payload: Awaited<ReturnType<typeof buildLocalP
             Logger.errorToast(`Failed to generate locally: ${error}`)
             stopGenerating()
         })
+        
+    if (hasGrammar) {
+        const executionTime = Date.now() - startTime
+        Logger.info(`✅ INFERENCE COMPLETE: GBNF engine | ${executionTime}ms | Traditional processing`)
+    }
 }
 
 const localAPIValues: APIValues = {
