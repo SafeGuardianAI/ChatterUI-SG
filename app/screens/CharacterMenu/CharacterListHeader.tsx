@@ -12,7 +12,7 @@ import { useLiveQuery } from 'drizzle-orm/expo-sqlite'
 import { useFocusEffect } from 'expo-router'
 import { useCallback } from 'react'
 import { BackHandler, Text, View } from 'react-native'
-import { useMMKVBoolean } from 'react-native-mmkv'
+import { useMMKVBoolean } from '@lib/storage/MMKV'
 import Animated, { FadeInUp, FadeOutUp, LinearTransition } from 'react-native-reanimated'
 
 import SortButton from './SortButton'

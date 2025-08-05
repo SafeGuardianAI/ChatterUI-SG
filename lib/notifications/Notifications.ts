@@ -7,7 +7,7 @@ import * as Notifications from 'expo-notifications'
 import { useRouter } from 'expo-router'
 import { useEffect } from 'react'
 import { Linking, Platform } from 'react-native'
-import { useMMKVBoolean } from 'react-native-mmkv'
+import { useMMKVBoolean } from '@lib/storage/MMKV'
 
 export const setupNotifications = () => {
     Notifications.setNotificationHandler({

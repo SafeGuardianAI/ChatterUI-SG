@@ -6,7 +6,7 @@ import { Instructs } from '@lib/state/Instructs'
 import { Logger } from '@lib/state/Logger'
 import { SamplersManager } from '@lib/state/SamplerState'
 import { useTTSState } from '@lib/state/TTS'
-import { mmkv } from '@lib/storage/MMKV'
+import { mmkvSync as mmkv } from '@lib/storage/MMKV'
 import { CompletionTimings } from 'db/schema'
 
 import { APIConfiguration, APISampler, APIValues } from './API/APIBuilder.types'

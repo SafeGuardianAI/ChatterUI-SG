@@ -7,7 +7,7 @@ import { Theme } from '@lib/theme/ThemeManager'
 import appConfig from 'app.config'
 import React, { useState } from 'react'
 import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { useMMKVBoolean } from 'react-native-mmkv'
+import { useMMKVBoolean } from '@lib/storage/MMKV'
 
 const About = () => {
     const styles = useStyles()

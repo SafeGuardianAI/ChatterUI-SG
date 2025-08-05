@@ -17,6 +17,7 @@ const GrammarToggle = () => {
     const [isEnabled, setIsEnabled] = useState(false)
     const [hasGrammar, setHasGrammar] = useState(false)
     const [grammarContent, setGrammarContent] = useState('')
+
     const [isGenerating, setIsGenerating] = useState(false)
     const [validationStatus, setValidationStatus] = useState<'unknown' | 'valid' | 'invalid'>('unknown')
     const cachedGrammarRef = useRef<string>('')
@@ -71,11 +72,12 @@ const GrammarToggle = () => {
                 const grammarString = String(currentConfig.data.grammar_string || '')
                 const hasContent = grammarString.trim().length > 0
                 
-                // If we have new grammar content, cache it and validate
+
                 if (hasContent) {
                     cachedGrammarRef.current = grammarString
                     mmkv.set(GRAMMAR_CACHE_KEY, grammarString)
                     setGrammarContent(grammarString)
+
                     
                     // Validate the grammar
                     validateGrammarContent(grammarString)
@@ -84,6 +86,7 @@ const GrammarToggle = () => {
                 // Load cached grammar if no current grammar
                 if (!hasContent && !cachedGrammarRef.current) {
                     const cached = mmkv.getString(GRAMMAR_CACHE_KEY)
+
                     if (cached) {
                         cachedGrammarRef.current = cached
                         setGrammarContent(cached)
@@ -266,6 +269,7 @@ const GrammarToggle = () => {
             ? displayGrammar.substring(0, 200) + '...'
             : displayGrammar
 
+
         // Determine grammar type and validation status
         const grammarType = displayGrammar.includes('::=') ? 'GBNF' : 
                            displayGrammar.startsWith('{') ? 'JSON Schema' : 'Unknown'
@@ -316,6 +320,7 @@ const GrammarToggle = () => {
 
     const clearCache = () => {
         Alert.alert({
+
             title: 'Clear Grammar Cache',
             description: 'This will remove the cached grammar and reset to defaults. You will need to upload a grammar file again or the default will be loaded.',
             buttons: [
@@ -408,6 +413,7 @@ const GrammarToggle = () => {
                     marginLeft: spacing.xs,
                     padding: spacing.xs,
                 }}>
+
                     <Text style={{
                         fontSize: 10,
                         color: color.primary._600,

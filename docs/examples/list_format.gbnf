@@ -1,0 +1,7 @@
+root ::= list
+
+list ::= "1. " item ("\n" number ". " item)*
+
+number ::= [2-9] | "10"
+
+item ::= [^\n]+ 

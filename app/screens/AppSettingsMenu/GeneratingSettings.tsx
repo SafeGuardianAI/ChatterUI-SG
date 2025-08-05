@@ -3,7 +3,7 @@ import SectionTitle from '@components/text/SectionTitle'
 import { AppSettings } from '@lib/constants/GlobalValues'
 import React from 'react'
 import { View } from 'react-native'
-import { useMMKVBoolean } from 'react-native-mmkv'
+import { useMMKVBoolean } from '@lib/storage/MMKV'
 
 const GeneratingSettings = () => {
     const [printContext, setPrintContext] = useMMKVBoolean(AppSettings.PrintContext)

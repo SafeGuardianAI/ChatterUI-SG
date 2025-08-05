@@ -3,7 +3,7 @@ import { useAppMode } from '@lib/state/AppMode'
 import { Chats } from '@lib/state/Chat'
 import { Theme } from '@lib/theme/ThemeManager'
 import { Pressable, Text, View } from 'react-native'
-import { useMMKVBoolean } from 'react-native-mmkv'
+import { useMMKVBoolean } from '@lib/storage/MMKV'
 import { useShallow } from 'zustand/react/shallow'
 
 import ChatActions, { optionState } from './ChatActions'

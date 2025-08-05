@@ -5,7 +5,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 import { AppSettings } from '../constants/GlobalValues'
-import { mmkv, mmkvStorage } from '../storage/MMKV'
+import { mmkvSync as mmkv, mmkvStorage } from '../storage/MMKV'
 
 const toastTime = Toast.SHORT
 const maxloglength = 2000

@@ -4,7 +4,7 @@ import { AppSettings } from '@lib/constants/GlobalValues'
 import { registerForPushNotificationsAsync } from '@lib/notifications/Notifications'
 import React from 'react'
 import { View } from 'react-native'
-import { useMMKVBoolean } from 'react-native-mmkv'
+import { useMMKVBoolean } from '@lib/storage/MMKV'
 
 const NotificationSettings = () => {
     const [notificationOnGenerate, setNotificationOnGenerate] = useMMKVBoolean(

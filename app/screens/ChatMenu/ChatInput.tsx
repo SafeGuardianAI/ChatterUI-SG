@@ -12,7 +12,7 @@ import { getDocumentAsync } from 'expo-document-picker'
 import { Image } from 'expo-image'
 import React, { useState } from 'react'
 import { TextInput, TouchableOpacity, View } from 'react-native'
-import { useMMKVBoolean } from 'react-native-mmkv'
+import { useMMKVBoolean } from '@lib/storage/MMKV'
 import Animated, {
     BounceIn,
     FadeIn,

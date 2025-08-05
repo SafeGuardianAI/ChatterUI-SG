@@ -79,7 +79,7 @@ const SamplerMenu = () => {
 
     const handleUploadGBNF = async () => {
         try {
-            Logger.infoToast('Opening GBNF file picker...')
+
             
             const result = await getDocumentAsync({
                 type: ['text/*', 'application/*', '*/*'],
@@ -108,6 +108,7 @@ const SamplerMenu = () => {
             }
             
             Logger.infoToast('Reading file content...')
+
             
             let grammarContent
             try {
@@ -123,10 +124,12 @@ const SamplerMenu = () => {
                 return
             }
             
+
             // Enhanced GBNF validation
             const validation = validateGBNF(grammarContent)
             if (!validation.valid) {
                 Logger.warnToast(`GBNF validation warnings: ${validation.errors.slice(0, 2).join(', ')}`)
+
             }
             
             Logger.infoToast('Updating grammar configuration...')
@@ -138,7 +141,7 @@ const SamplerMenu = () => {
                 },
             })
             
-            Logger.info(`📁 GRAMMAR LOADED: GBNF file "${file.name}" (${grammarContent.length} chars)`)
+
             Logger.infoToast(`Successfully loaded GBNF grammar from ${file.name}`)
         } catch (error) {
             console.error('GBNF Upload Error:', error)
@@ -148,7 +151,9 @@ const SamplerMenu = () => {
 
     const handleUploadJSON = async () => {
         try {
+
             Logger.infoToast('Opening JSON Schema file picker...')
+
             
             const result = await getDocumentAsync({
                 type: ['application/json', 'text/*', '*/*'],
@@ -177,6 +182,7 @@ const SamplerMenu = () => {
             }
             
             Logger.infoToast('Reading JSON file...')
+
             
             let jsonContent
             try {
@@ -201,6 +207,7 @@ const SamplerMenu = () => {
                 return
             }
             
+
             // Enhanced JSON Schema validation
             const validation = validateJsonSchema(jsonSchema)
             if (!validation.valid) {
@@ -221,6 +228,7 @@ const SamplerMenu = () => {
                 console.error('JSON to GBNF conversion error:', conversionError)
                 const errorMsg = (conversionError as Error)?.message || String(conversionError)
                 Logger.errorToast(`Conversion failed: ${errorMsg}`)
+
                 return
             }
             
@@ -239,13 +247,14 @@ const SamplerMenu = () => {
                 },
             })
             
-            Logger.info(`📁 GRAMMAR LOADED: JSON Schema "${file.name}" converted to GBNF (${grammarString.length} chars)`)
+
             Logger.infoToast(`Successfully converted and loaded grammar from ${file.name}`)
         } catch (error) {
             console.error('JSON Upload Error:', error)
             Logger.errorToast(`Failed to process JSON file: ${(error as Error)?.message || String(error)}`)
         }
     }
+
 
     const handleUploadLARK = async () => {
         try {
@@ -687,6 +696,7 @@ const SamplerMenu = () => {
                                             <View style={{ 
                                                 flexDirection: 'row', 
                                                 marginTop: spacing.m, 
+
                                                 columnGap: spacing.m,
                                                 flexWrap: 'wrap'
                                             }}>

@@ -4,7 +4,7 @@ import { Characters } from '@lib/state/Characters'
 import { ChatEntry, Chats } from '@lib/state/Chat'
 import { Instructs, InstructType } from '@lib/state/Instructs'
 import { Logger } from '@lib/state/Logger'
-import { mmkv } from '@lib/storage/MMKV'
+import { mmkvSync as mmkv } from '@lib/storage/MMKV'
 import { Macro } from '@lib/utils/Macros'
 import { readAsStringAsync } from 'expo-file-system'
 

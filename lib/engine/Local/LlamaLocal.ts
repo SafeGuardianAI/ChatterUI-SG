@@ -16,7 +16,7 @@ import { checkGGMLDeprecated } from './GGML'
 import { KV, Model } from './Model'
 import { AppSettings } from '../../constants/GlobalValues'
 import { Logger } from '../../state/Logger'
-import { mmkv, mmkvStorage } from '../../storage/MMKV'
+import { mmkvSync as mmkv, mmkvStorage } from '../../storage/MMKV'
 
 export type CompletionTimings = {
     predicted_per_token_ms: number
