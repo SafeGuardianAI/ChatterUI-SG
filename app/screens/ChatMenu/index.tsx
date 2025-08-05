@@ -8,7 +8,7 @@ import ChatInput from '@screens/ChatMenu/ChatInput'
 import AvatarViewer from '@screens/ChatMenu/ChatWindow/AvatarViewer'
 import ChatWindow from '@screens/ChatMenu/ChatWindow/ChatWindow'
 import ChatsDrawer from '@screens/ChatMenu/ChatsDrawer'
-import GrammarToggle from '@screens/ChatMenu/GrammarToggle'
+import GrammarToggle from '@screens/ChatMenu/GrammarToggleEnhanced'
 import OptionsMenu from '@screens/ChatMenu/OptionsMenu'
 import SettingsDrawer from '@screens/SettingsDrawer'
 import { useEffect, useState } from 'react'
@@ -217,10 +217,23 @@ const ChatMenu = () => {
                         height: '100%',
                         paddingBottom: insets.bottom,
                         position: 'absolute',
+                        pointerEvents: 'box-none',
                     }}>
                     <SettingsDrawer />
                     <ChatsDrawer />
-                    <GrammarToggle />
+
+                    <View
+                        style={{
+                            position: 'absolute',
+                            bottom: spacing.xl3,
+                            right: spacing.l,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: spacing.m,
+                        }}>
+                        <GrammarToggle />
+                        {/* <OptionsMenu /> */}
+                    </View>
                 </View>
             </View>
         </Drawer.Gesture>

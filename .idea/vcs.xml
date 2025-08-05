@@ -3,6 +3,7 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/SafeGuardianAI/ChatApp" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ChatterUI-SG/llguidance-bg" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/bitchat-android" vcs="Git" />
   </component>
 </project>

@@ -17,7 +17,11 @@
     "migrate": "npx drizzle-kit generate",
     "patchsql": "npx patch-package expo-sqlite --exclude \"\\.project|\\.cxx|\\.c|\\.h|build|bin\" --case-sensitive-path-filtering",
     "patchfetch": "npx patch-package expo --include '\".*fetch\\.ts$|.*NativeResponse\\.kt$\"'",
-    "patchfs": "npx patch-package expo-file-system --include \"\\.kt$\""
+    "patchfs": "npx patch-package expo-file-system --include \"\\.kt$\"",
+    "build:llguidance": "node scripts/build-llguidance.js",
+    "test:llguidance": "node scripts/test-llguidance.js",
+    "test:grammar-logging": "node scripts/test-grammar-logging.js",
+    "setup:llguidance": "npm run build:llguidance"
   },
   "jest": {
     "preset": "jest-expo"

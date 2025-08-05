@@ -8,6 +8,7 @@ import CharacterSettings from './CharacterSettings'
 import ChatSettings from './ChatSettings'
 import DatabaseSettings from './DatabaseSettings'
 import GeneratingSettings from './GeneratingSettings'
+import GrammarEngineSettings from './GrammarEngineSettings'
 import NotificationSettings from './NotificationSettings'
 import RescueAPISettings from './RescueAPISettings'
 import ScreenSettings from './ScreenSettings'
@@ -31,6 +32,7 @@ const AppSettingsMenu = () => {
             <ChatSettings />
             <CharacterSettings />
             <GeneratingSettings />
+            <GrammarEngineSettings />
             <NotificationSettings />
             <RescueAPISettings />
             <ScreenSettings />
