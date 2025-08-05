@@ -8,6 +8,7 @@ import Accordion from '@components/views/Accordion'
 import { Logger } from '@lib/state/Logger'
 import { Theme } from '@lib/theme/ThemeManager'
 import { useMMKVBoolean } from '@lib/storage/MMKV'
+import { RescueAPIService } from '@lib/services/RescueAPI'
 import React, { useState, useEffect } from 'react'
 import { View, ScrollView, StyleSheet, NativeModules, NativeEventEmitter } from 'react-native'
 
@@ -21,6 +22,7 @@ const BitChatSettings = () => {
     
     const [isTestingConnection, setIsTestingConnection] = useState(false)
     const [testResults, setTestResults] = useState<string>('')
+    const [meshStatus, setMeshStatus] = useState<any>(null)
 
     const testMeshConnection = async () => {
         setIsTestingConnection(true)
@@ -149,14 +151,45 @@ const BitChatSettings = () => {
         }
     }
 
-    const handleMeshToggle = (value: boolean) => {
+    const handleMeshToggle = async (value: boolean) => {
         setMeshEnabled(value)
-        if (value) {
-            Logger.infoToast('BitChat mesh networking enabled')
-        } else {
-            Logger.infoToast('BitChat mesh networking disabled')
+        
+        // Update rescue API mesh relay
+        try {
+            const rescueAPI = RescueAPIService.getInstance()
+            await rescueAPI.setMeshRelayEnabled(value)
+            
+            if (value) {
+                Logger.infoToast('BitChat mesh networking enabled')
+                // Update mesh status
+                updateMeshStatus()
+            } else {
+                Logger.infoToast('BitChat mesh networking disabled')
+                setMeshStatus(null)
+            }
+        } catch (error) {
+            Logger.errorToast(`Failed to ${value ? 'enable' : 'disable'} mesh relay: ${error}`)
         }
     }
+
+    const updateMeshStatus = () => {
+        try {
+            const rescueAPI = RescueAPIService.getInstance()
+            const status = rescueAPI.getMeshNetworkStatus()
+            setMeshStatus(status)
+        } catch (error) {
+            Logger.error(`Failed to get mesh status: ${error}`)
+        }
+    }
+
+    useEffect(() => {
+        if (meshEnabled) {
+            updateMeshStatus()
+            // Update status every 10 seconds
+            const interval = setInterval(updateMeshStatus, 10000)
+            return () => clearInterval(interval)
+        }
+    }, [meshEnabled])
 
     const handleAutoConnectToggle = (value: boolean) => {
         setAutoConnect(value)
@@ -243,6 +276,25 @@ const BitChatSettings = () => {
                         </TText>
                     </View>
 
+                    {meshStatus && (
+                        <View style={[styles.statusContainer, { backgroundColor: color.primary._100 }]}>
+                            <TText style={[styles.statusText, { color: color.primary._800 }]}>
+                                🌐 Mesh Rescue Relay: {meshStatus.status}
+                            </TText>
+                            <TText style={[styles.infoText, { marginTop: spacing.xs }]}>
+                                Device ID: {meshStatus.deviceId?.substring(0, 12)}...
+                            </TText>
+                            <TText style={styles.infoText}>
+                                👥 Peers: {meshStatus.peerCount} | 📋 Queued: {meshStatus.queuedMessages} | 📡 Relayed: {meshStatus.relayedMessages}
+                            </TText>
+                            {meshStatus.queue && meshStatus.queue.length > 0 && (
+                                <TText style={[styles.infoText, { color: color.error._600 }]}>
+                                    ⚠️ {meshStatus.queue.length} messages pending transmission
+                                </TText>
+                            )}
+                        </View>
+                    )}
+
                     <View style={styles.buttonContainer}>
                         <ThemedButton 
                             label={isTestingConnection ? "Testing..." : "Test Mesh Connection"} 
@@ -262,32 +314,63 @@ const BitChatSettings = () => {
                             onPress={restartMeshService}
                             variant="secondary"
                         />
+                        {meshStatus && meshStatus.queuedMessages > 0 && (
+                            <ThemedButton 
+                                label="Retry Queued Messages" 
+                                onPress={async () => {
+                                    try {
+                                        const rescueAPI = RescueAPIService.getInstance()
+                                        await rescueAPI.retryQueuedVictimData()
+                                        Logger.infoToast('Retrying queued messages...')
+                                        updateMeshStatus()
+                                    } catch (error) {
+                                        Logger.errorToast(`Failed to retry messages: ${error}`)
+                                    }
+                                }}
+                                variant="secondary"
+                            />
+                        )}
                     </View>
 
-                    <Accordion label="How BitChat Works">
+                    <Accordion label="How BitChat Rescue Relay Works">
                         <View style={{ padding: spacing.m }}>
                             <TText>
-                                BitChat enables peer-to-peer mesh networking for sharing conversations between nearby devices:
+                                BitChat Rescue Relay provides emergency-grade mesh networking for victim data transmission:
                                 {'\n\n'}
                                 🌐 <TText style={{ fontWeight: 'bold' }}>Mesh Networking:</TText>
                                 {'\n'}- Creates local network between devices
                                 {'\n'}- Works without internet connection
                                 {'\n'}- Uses WiFi Direct, Bluetooth, and nearby protocols
                                 {'\n\n'}
-                                📡 <TText style={{ fontWeight: 'bold' }}>Broadcasting:</TText>
-                                {'\n'}- Share chat conversations with connected peers
-                                {'\n'}- Automatic peer discovery and connection
-                                {'\n'}- Real-time message synchronization
+                                🚑 <TText style={{ fontWeight: 'bold' }}>Rescue Data Relay:</TText>
+                                {'\n'}- Automatically queues victim data when offline
+                                {'\n'}- Prioritizes critical/serious cases first
+                                {'\n'}- Relays through mesh to internet-connected devices
+                                {'\n'}- Persistent queue with retry mechanisms
                                 {'\n\n'}
-                                🔒 <TText style={{ fontWeight: 'bold' }}>Privacy:</TText>
-                                {'\n'}- Direct device-to-device communication
-                                {'\n'}- No central server required
-                                {'\n'}- Messages stay within local mesh network
+                                📊 <TText style={{ fontWeight: 'bold' }}>Priority System:</TText>
+                                {'\n'}- CRITICAL: Life-threatening (trapped, severe injuries)
+                                {'\n'}- SERIOUS: Urgent but stable
+                                {'\n'}- HIGH: Important updates
+                                {'\n'}- NORMAL: Standard reports
+                                {'\n\n'}
+                                📡 <TText style={{ fontWeight: 'bold' }}>Message Types:</TText>
+                                {'\n'}- EMERGENCY: Critical alerts (highest priority)
+                                {'\n'}- DATA: Victim information relay
+                                {'\n'}- BEACON: Status broadcasts every 30s
+                                {'\n'}- ACK: Delivery confirmations
+                                {'\n\n'}
+                                🔒 <TText style={{ fontWeight: 'bold' }}>Reliability:</TText>
+                                {'\n'}- Exponential backoff retry (up to 10 attempts)
+                                {'\n'}- Message expiration (24h critical, 6h others)
+                                {'\n'}- Automatic internet fallback detection
+                                {'\n'}- Persistent storage survives app restarts
                                 {'\n\n'}
                                 ⚙️ <TText style={{ fontWeight: 'bold' }}>Requirements:</TText>
                                 {'\n'}- WiFi and Bluetooth permissions
                                 {'\n'}- Location services (for nearby device discovery)
                                 {'\n'}- Multiple BitChat-enabled devices in range
+                                {'\n'}- At least one device with internet access in mesh
                             </TText>
                         </View>
                     </Accordion>
@@ -295,7 +378,21 @@ const BitChatSettings = () => {
                     {!BitChatModule && (
                         <View style={styles.warningContainer}>
                             <TText style={styles.warningText}>
-                                ⚠️ BitChat native module is not available on this device. Mesh networking functionality is disabled. This feature requires the full Android build with native BitChat support.
+                                ⚠️ BitChatNative module is not available on this device.
+                                {'\n\n'}
+                                🔧 <TText style={{ fontWeight: 'bold' }}>Fallback Mode Active:</TText>
+                                {'\n'}✅ Full AI functionality for victim data generation
+                                {'\n'}✅ Direct API submission when internet is available
+                                {'\n'}✅ Local data storage and queue management
+                                {'\n'}❌ Mesh networking disabled (requires native module)
+                                {'\n'}❌ Offline relay functionality unavailable
+                                {'\n\n'}
+                                🏗️ <TText style={{ fontWeight: 'bold' }}>To Enable Full Mesh Capabilities:</TText>
+                                {'\n'}1. Build with Android NDK support
+                                {'\n'}2. Include BitChatNative module in build
+                                {'\n'}3. Grant all required permissions
+                                {'\n\n'}
+                                📖 See README.md for detailed build instructions.
                             </TText>
                         </View>
                     )}
