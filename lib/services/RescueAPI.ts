@@ -1,4 +1,4 @@
-import { mmkv } from '@lib/storage/MMKV'
+import { mmkv, mmkvSync } from '@lib/storage/MMKV'
 import { Logger } from '@lib/state/Logger'
 
 interface VictimInfo {
@@ -117,10 +117,10 @@ export class RescueAPIService {
 
     getBackendType(): BackendType {
         // Check which backend is enabled
-        const firebaseEnabled = mmkv.getBoolean(RescueAPISettings.FirebaseEnabled) ?? false
-        const mongodbEnabled = mmkv.getBoolean(RescueAPISettings.MongoDBEnabled) ?? false
+        const firebaseEnabled = mmkvSync.getBoolean(RescueAPISettings.FirebaseEnabled) ?? false
+        const mongodbEnabled = mmkvSync.getBoolean(RescueAPISettings.MongoDBEnabled) ?? false
         
-        if (firebaseEnabled && !mongodbEnabled) {
+        if (!mongodbEnabled) {
             return BackendType.FIREBASE
         }
         // Default to MongoDB if both or neither are enabled
@@ -138,37 +138,80 @@ export class RescueAPIService {
             if (this.backendType === BackendType.MONGODB) {
                 this.victimTemplate = { ...MONGODB_VICTIM_TEMPLATE }
             } else {
-                // Firebase uses nested structure
+                // Firebase uses victim_info root with nested structure (matching MongoDB structure but under victim_info)
                 this.victimTemplate = {
                     victim_info: {
-                        name: '',
-                        age: null,
-                        gender: '',
-                        physical_description: '',
-                        last_known_location: {
-                            latitude: null,
-                            longitude: null,
-                            address: '',
-                            landmark: ''
+                        id: "",
+                        emergency_status: "",
+                        location: {
+                            lat: 0.0,
+                            lon: 0.0,
+                            details: "",
+                            nearest_landmark: ""
+                        },
+                        personal_info: {
+                            name: "",
+                            age: 0,
+                            gender: "",
+                            language: "",
+                            physical_description: ""
+                        },
+                        medical_info: {
+                            injuries: [],
+                            pain_level: 0,
+                            medical_conditions: [],
+                            medications: [],
+                            allergies: [],
+                            blood_type: ""
+                        },
+                        situation: {
+                            disaster_type: "",
+                            immediate_needs: [],
+                            trapped: false,
+                            mobility: "",
+                            nearby_hazards: []
                         },
                         contact_info: {
-                            phone: '',
-                            emergency_contact: '',
-                            relationship: ''
+                            phone: "",
+                            email: "",
+                            emergency_contact: {
+                                name: "",
+                                relationship: "",
+                                phone: ""
+                            }
+                        },
+                        resources: {
+                            food_status: "",
+                            water_status: "",
+                            shelter_status: "",
+                            communication_devices: []
+                        },
+                        rescue_info: {
+                            last_contact: "",
+                            rescue_team_eta: "",
+                            special_rescue_needs: ""
+                        },
+                        environmental_data: {
+                            temperature: 0,
+                            humidity: 0,
+                            air_quality: "",
+                            weather: ""
+                        },
+                        device_data: {
+                            battery_level: 0,
+                            network_status: ""
+                        },
+                        social_info: {
+                            group_size: 0,
+                            dependents: 0,
+                            nearby_victims_count: 0,
+                            can_communicate_verbally: false
+                        },
+                        psychological_status: {
+                            stress_level: "",
+                            special_needs: ""
                         }
-                    },
-                    medical_info: {
-                        conditions: [],
-                        medications: [],
-                        allergies: [],
-                        blood_type: '',
-                        special_needs: ''
-                    },
-                    emergency_status: 'unknown',
-                    rescue_status: 'pending',
-                    additional_notes: '',
-                    timestamp: new Date().toISOString(),
-                    last_updated: new Date().toISOString()
+                    }
                 }
             }
 
@@ -184,22 +227,34 @@ export class RescueAPIService {
         try {
             const url = this.endpoint + endpoint
             const backend = this.getBackendType()
-            Logger.debug(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Making ${method} request to: ${url}`)
+            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Making ${method} request to: ${url}`)
+            
             if (data) {
-                Logger.debug(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Request body: ${JSON.stringify(data, null, 2)}`)
+                Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Request Headers: Content-Type: application/json`)
+                Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Request Body (Full):`)
+                Logger.info(`${JSON.stringify(data, null, 2)}`)
+                Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Request Body (Compact): ${JSON.stringify(data)}`)
+                Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Request Body Size: ${JSON.stringify(data).length} characters`)
+            } else {
+                Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] No request body (GET request)`)
             }
+            
+            const requestBody = data ? JSON.stringify(data) : undefined
+            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Final request body being sent: ${requestBody || 'undefined'}`)
             
             const response = await fetch(url, {
                 method,
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: data ? JSON.stringify(data) : undefined,
+                body: requestBody,
             })
 
             const responseText = await response.text()
-            Logger.debug(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Response status: ${response.status}`)
-            Logger.debug(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Response body: ${responseText}`)
+            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Response status: ${response.status}`)
+            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Response headers: ${JSON.stringify(Object.fromEntries(response.headers.entries()))}`)
+            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Response body (raw): ${responseText}`)
+            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Response body length: ${responseText.length} characters`)
 
             if (response.status === 200) {
                 try {
@@ -247,14 +302,22 @@ export class RescueAPIService {
      */
     private normalizeVictimData(data: any): any {
         const backend = this.getBackendType()
+        Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Normalizing data for ${backend} backend`)
+        Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Input data structure: ${JSON.stringify(Object.keys(data || {}), null, 2)}`)
         
+        let normalizedData
         if (backend === BackendType.MONGODB) {
             // For MongoDB, flatten the structure
-            return this.flattenForMongoDB(data)
+            Logger.info(`[MongoDB] Using MongoDB normalization (victim_data root)`)
+            normalizedData = this.flattenForMongoDB(data)
         } else {
             // For Firebase, use nested structure
-            return this.normalizeForFirebase(data)
+            Logger.info(`[Firebase] Using Firebase normalization (victim_info root)`)
+            normalizedData = this.normalizeForFirebase(data)
         }
+        
+        Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Output data structure: ${JSON.stringify(Object.keys(normalizedData || {}), null, 2)}`)
+        return normalizedData
     }
 
     /**
@@ -526,11 +589,42 @@ export class RescueAPIService {
         
         try {
             const backend = this.getBackendType()
+            
+            // Check if there's an existing victim number to update
+            const existingVictimNumber = mmkvSync.getString(RescueAPISettings.LastVictimNumber)
+            
+            if (existingVictimNumber) {
+                Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] ===== UPDATING EXISTING VICTIM =====`)
+                Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Existing Victim Number: ${existingVictimNumber}`)
+                Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Using UPDATE endpoint instead of CREATE`)
+                
+                // Use the updateVictim method for existing victims
+                const updateResult = await this.updateVictim(existingVictimNumber, victimInfo)
+                if (updateResult) {
+                    Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Successfully updated existing victim: ${existingVictimNumber}`)
+                    return existingVictimNumber // Return the existing ID since it was updated
+                } else {
+                    Logger.warn(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Update failed, falling back to creating new victim`)
+                    // Fall through to create new victim if update fails
+                }
+            }
+            
+            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] ===== CREATING NEW VICTIM =====`)
+            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Backend Type: ${backend}`)
+            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Endpoint: ${this.endpoint}`)
+            
+            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Original victim data received:`)
+            Logger.info(`${JSON.stringify(victimInfo, null, 2)}`)
+            
             const normalizedData = this.normalizeVictimData(victimInfo)
-            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Posting new victim`)
-            Logger.debug(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Sending normalized victim data: ${JSON.stringify(normalizedData)}`)
+            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Normalized victim data:`)
+            Logger.info(`${JSON.stringify(normalizedData, null, 2)}`)
+            
+            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Data transformation complete. Sending to API...`)
             
             const endpoint = backend === BackendType.MONGODB ? 'victim/report' : 'victim/create'
+            Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Using CREATE endpoint: ${endpoint}`)
+            
             const result = await this.makeRequest('POST', endpoint, normalizedData)
             
             if (backend === BackendType.MONGODB) {
@@ -540,22 +634,31 @@ export class RescueAPIService {
                     if (/^[0-9a-fA-F]{24}$/.test(result)) {
                         Logger.info(`[MongoDB] Victim created with ObjectId: ${result}`)
                         Logger.infoToast(`MongoDB: New victim created with ID: ${result.substring(0, 8)}...`)
+                        // Save the new victim number for future updates
+                        mmkvSync.set(RescueAPISettings.LastVictimNumber, result)
+                        Logger.info(`[MongoDB] Saved victim number for future updates: ${result}`)
                         return result
                     } else if (result.startsWith('-')) {
                         // Backend returned Firebase ID for MongoDB - this is an error
                         Logger.error(`[MongoDB] Backend returned Firebase-style ID instead of ObjectId: ${result}`)
                         Logger.errorToast('Backend configuration error: MongoDB should return ObjectId, not Firebase ID')
                         // Still save it so we don't lose the victim
+                        mmkvSync.set(RescueAPISettings.LastVictimNumber, result)
+                        Logger.info(`[MongoDB] Saved Firebase-style ID for future updates: ${result}`)
                         return result
                     }
                 } else if (result && result.victim_number) {
                     const id = result.victim_number
                     if (/^[0-9a-fA-F]{24}$/.test(id)) {
                         Logger.info(`[MongoDB] Victim created with ObjectId: ${id}`)
+                        mmkvSync.set(RescueAPISettings.LastVictimNumber, id)
+                        Logger.info(`[MongoDB] Saved victim number for future updates: ${id}`)
                         return id
                     } else if (id.startsWith('-')) {
                         Logger.error(`[MongoDB] Backend returned Firebase-style ID instead of ObjectId: ${id}`)
                         Logger.errorToast('Backend configuration error: MongoDB should return ObjectId, not Firebase ID')
+                        mmkvSync.set(RescueAPISettings.LastVictimNumber, id)
+                        Logger.info(`[MongoDB] Saved Firebase-style ID for future updates: ${id}`)
                         return id
                     }
                 }
@@ -564,9 +667,14 @@ export class RescueAPIService {
                 if (result && typeof result === 'string' && result.startsWith('-')) {
                     Logger.info(`[Firebase] Victim created with ID: ${result}`)
                     Logger.infoToast(`Firebase: New victim created with ID: ${result.substring(0, 10)}...`)
+                    // Save the new victim number for future updates
+                    mmkvSync.set(RescueAPISettings.LastVictimNumber, result)
+                    Logger.info(`[Firebase] Saved victim number for future updates: ${result}`)
                     return result
                 } else if (result && result.victim_id) {
                     Logger.info(`[Firebase] Victim created with ID: ${result.victim_id}`)
+                    mmkvSync.set(RescueAPISettings.LastVictimNumber, result.victim_id)
+                    Logger.info(`[Firebase] Saved victim number for future updates: ${result.victim_id}`)
                     return result.victim_id
                 }
             }
@@ -584,6 +692,12 @@ export class RescueAPIService {
         if (!this.initialized) await this.initialize()
         
         const backend = this.getBackendType()
+        Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] ===== UPDATING VICTIM =====`)
+        Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Victim ID: ${victimNumber}`)
+        Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Backend Type: ${backend}`)
+        
+        Logger.info(`[${backend === BackendType.MONGODB ? 'MongoDB' : 'Firebase'}] Original update data:`)
+        Logger.info(`${JSON.stringify(victimInfo, null, 2)}`)
         
         // Validate ID format based on backend - but be flexible
         if (backend === BackendType.MONGODB) {
@@ -618,7 +732,7 @@ export class RescueAPIService {
 
         const endpoint = backend === BackendType.MONGODB 
             ? `victim/update/${victimNumber}` 
-            : `victim/${victimNumber}/update`
+            : `victim/update/${victimNumber}`
             
         const result = await this.makeRequest('POST', endpoint, normalizedData)
         
@@ -732,26 +846,42 @@ export class RescueAPIService {
      */
     parseAIResponse(content: string): VictimInfo | null {
         try {
+            Logger.info('===== PARSING AI RESPONSE =====')
+            Logger.info(`Original AI response length: ${content.length} characters`)
+            Logger.info(`Original AI response (first 500 chars): ${content.substring(0, 500)}...`)
+            
             // First try to clean up common JSON issues
             let cleanedContent = content.trim()
+            Logger.info(`After trim: ${cleanedContent.length} characters`)
             
             // Remove any text before the first { and after the last }
             const firstBrace = cleanedContent.indexOf('{')
             const lastBrace = cleanedContent.lastIndexOf('}')
             
+            Logger.info(`First brace at position: ${firstBrace}, Last brace at position: ${lastBrace}`)
+            
             if (firstBrace !== -1 && lastBrace !== -1) {
                 cleanedContent = cleanedContent.substring(firstBrace, lastBrace + 1)
+                Logger.info(`After brace extraction: ${cleanedContent.length} characters`)
+                Logger.info(`Cleaned content (first 500 chars): ${cleanedContent.substring(0, 500)}...`)
             }
             
             // Try to parse the cleaned content
             try {
                 const parsed = JSON.parse(cleanedContent)
-                Logger.info('Successfully parsed AI response as JSON')
+                Logger.info('✅ Successfully parsed AI response as JSON')
+                Logger.info(`Parsed JSON structure keys: ${JSON.stringify(Object.keys(parsed))}`)
+                Logger.info(`Full parsed data:`)
+                Logger.info(`${JSON.stringify(parsed, null, 2)}`)
                 
                 // Check if it has the expected structure (either victim_info or victim_data)
                 if (!parsed.victim_info && !parsed.victim_data) {
-                    Logger.warn('Parsed JSON missing victim_info or victim_data root object')
-                    Logger.debug(`Parsed structure: ${JSON.stringify(Object.keys(parsed))}`)
+                    Logger.warn('⚠️ Parsed JSON missing victim_info or victim_data root object')
+                    Logger.warn(`Available top-level keys: ${JSON.stringify(Object.keys(parsed))}`)
+                } else {
+                    const rootKey = parsed.victim_info ? 'victim_info' : 'victim_data'
+                    Logger.info(`✅ Found expected root object: ${rootKey}`)
+                    Logger.info(`${rootKey} contains keys: ${JSON.stringify(Object.keys(parsed[rootKey]))}`)
                 }
                 
                 return parsed
@@ -897,20 +1027,33 @@ export const RescueAPISettings = {
 }
 
 // Initialize settings with defaults
-export const initializeRescueAPISettings = () => {
-    if (mmkv.getString(RescueAPISettings.Endpoint) === undefined) {
-        mmkv.set(RescueAPISettings.Endpoint, 'https://safeguardian-33b94228882a.herokuapp.com/')
-    }
-    if (mmkv.getBoolean(RescueAPISettings.Enabled) === undefined) {
-        mmkv.set(RescueAPISettings.Enabled, false)
-    }
-    if (mmkv.getBoolean(RescueAPISettings.AutoReport) === undefined) {
-        mmkv.set(RescueAPISettings.AutoReport, true)
-    }
-    if (mmkv.getBoolean(RescueAPISettings.FirebaseEnabled) === undefined) {
-        mmkv.set(RescueAPISettings.FirebaseEnabled, false)
-    }
-    if (mmkv.getBoolean(RescueAPISettings.MongoDBEnabled) === undefined) {
-        mmkv.set(RescueAPISettings.MongoDBEnabled, true)
+export const initializeRescueAPISettings = async () => {
+    try {
+        const endpoint = await mmkv.getString(RescueAPISettings.Endpoint)
+        if (endpoint === undefined) {
+            await mmkv.set(RescueAPISettings.Endpoint, 'https://safeguardian-33b94228882a.herokuapp.com/')
+        }
+        
+        const enabled = await mmkv.getBoolean(RescueAPISettings.Enabled)
+        if (enabled === undefined) {
+            await mmkv.set(RescueAPISettings.Enabled, false)
+        }
+        
+        const autoReport = await mmkv.getBoolean(RescueAPISettings.AutoReport)
+        if (autoReport === undefined) {
+            await mmkv.set(RescueAPISettings.AutoReport, true)
+        }
+        
+        const firebaseEnabled = await mmkv.getBoolean(RescueAPISettings.FirebaseEnabled)
+        if (firebaseEnabled === undefined) {
+            await mmkv.set(RescueAPISettings.FirebaseEnabled, false)
+        }
+        
+        const mongodbEnabled = await mmkv.getBoolean(RescueAPISettings.MongoDBEnabled)
+        if (mongodbEnabled === undefined) {
+            await mmkv.set(RescueAPISettings.MongoDBEnabled, true)
+        }
+    } catch (error) {
+        Logger.error(`Failed to initialize RescueAPI settings: ${error}`)
     }
 } 

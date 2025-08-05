@@ -4,6 +4,7 @@ import React from 'react'
 import { View } from 'react-native'
 
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller'
+import BitChatSettings from './BitChatSettings'
 import CharacterSettings from './CharacterSettings'
 import ChatSettings from './ChatSettings'
 import DatabaseSettings from './DatabaseSettings'
@@ -33,6 +34,7 @@ const AppSettingsMenu = () => {
             <CharacterSettings />
             <GeneratingSettings />
             <GrammarEngineSettings />
+            <BitChatSettings />
             <NotificationSettings />
             <RescueAPISettings />
             <ScreenSettings />

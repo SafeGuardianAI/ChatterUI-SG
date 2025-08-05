@@ -6,7 +6,7 @@ import TText from '@components/text/TText'
 import Alert from '@components/views/Alert'
 import { GrammarInference, GrammarSettings } from '@lib/engine/Grammar/GrammarInference'
 import { Logger } from '@lib/state/Logger'
-import { mmkv } from '@lib/storage/MMKV'
+import { mmkv, useMMKVString, useMMKVBoolean, mmkvSync } from '@lib/storage/MMKV'
 import { Theme } from '@lib/theme/ThemeManager'
 import React, { useState, useEffect } from 'react'
 import { View, StyleSheet } from 'react-native'
@@ -22,22 +22,12 @@ const engineOptions = [
 const GrammarEngineSettings = () => {
     const { color, spacing, borderRadius } = Theme.useTheme()
     
-    // Settings state
-    const [engine, setEngine] = useState<GrammarEngineType>(
-        (mmkv.getString(GrammarSettings.Engine) as GrammarEngineType) ?? 'auto'
-    )
-    const [fallbackEngine, setFallbackEngine] = useState<GrammarEngineType>(
-        (mmkv.getString(GrammarSettings.FallbackEngine) as GrammarEngineType) ?? 'gbnf'
-    )
-    const [enableCaching, setEnableCaching] = useState(
-        mmkv.getBoolean(GrammarSettings.EnableCaching) ?? true
-    )
-    const [debugMode, setDebugMode] = useState(
-        mmkv.getBoolean(GrammarSettings.DebugMode) ?? false
-    )
-    const [preferredEngine, setPreferredEngine] = useState<GrammarEngineType>(
-        (mmkv.getString(GrammarSettings.PreferredEngine) as GrammarEngineType) ?? 'gbnf'
-    )
+    // Settings state using MMKV hooks
+    const [engine, setEngine] = useMMKVString(GrammarSettings.Engine, 'auto') as [GrammarEngineType, (value: GrammarEngineType) => void]
+    const [fallbackEngine, setFallbackEngine] = useMMKVString(GrammarSettings.FallbackEngine, 'gbnf') as [GrammarEngineType, (value: GrammarEngineType) => void]
+    const [enableCaching, setEnableCaching] = useMMKVBoolean(GrammarSettings.EnableCaching, true)
+    const [debugMode, setDebugMode] = useMMKVBoolean(GrammarSettings.DebugMode, false)
+    const [preferredEngine, setPreferredEngine] = useMMKVString(GrammarSettings.PreferredEngine, 'gbnf') as [GrammarEngineType, (value: GrammarEngineType) => void]
 
     // Status state
     const [llguidanceAvailable, setLLguidanceAvailable] = useState<boolean | null>(null)
@@ -75,43 +65,30 @@ const GrammarEngineSettings = () => {
         }
     }
 
-    const handleEngineChange = (value: string) => {
-        const newEngine = value as GrammarEngineType
-        setEngine(newEngine)
-        mmkv.set(GrammarSettings.Engine, newEngine)
-        
-        grammarInference.updateConfiguration({ engine: newEngine })
-        Logger.infoToast(`Grammar engine set to ${newEngine}`)
+    const handleEngineChange = (value: GrammarEngineType) => {
+        setEngine(value)
+        grammarInference.updateConfiguration({ engine: value })
+        Logger.infoToast(`Grammar engine set to ${value}`)
     }
 
-    const handleFallbackEngineChange = (value: string) => {
-        const newFallback = value as GrammarEngineType
-        setFallbackEngine(newFallback)
-        mmkv.set(GrammarSettings.FallbackEngine, newFallback)
-        
-        grammarInference.updateConfiguration({ fallbackEngine: newFallback })
+    const handleFallbackEngineChange = (value: GrammarEngineType) => {
+        setFallbackEngine(value)
+        grammarInference.updateConfiguration({ fallbackEngine: value })
     }
 
     const handleCachingToggle = (value: boolean) => {
         setEnableCaching(value)
-        mmkv.set(GrammarSettings.EnableCaching, value)
-        
         grammarInference.updateConfiguration({ enableCaching: value })
     }
 
     const handleDebugModeToggle = (value: boolean) => {
         setDebugMode(value)
-        mmkv.set(GrammarSettings.DebugMode, value)
-        
         grammarInference.updateConfiguration({ debugMode: value })
     }
 
-    const handlePreferredEngineChange = (value: string) => {
-        const newPreferred = value as GrammarEngineType
-        setPreferredEngine(newPreferred)
-        mmkv.set(GrammarSettings.PreferredEngine, newPreferred)
-        
-        grammarInference.updateConfiguration({ preferredEngine: newPreferred })
+    const handlePreferredEngineChange = (value: GrammarEngineType) => {
+        setPreferredEngine(value)
+        grammarInference.updateConfiguration({ preferredEngine: value })
     }
 
     const runBenchmark = async () => {
@@ -271,11 +248,14 @@ Auto Select:
             <SectionTitle>Grammar Engine</SectionTitle>
             
             <View style={styles.section}>
+                <TText style={{ fontSize: 14, fontWeight: '600', marginBottom: spacing.sm }}>Primary Engine</TText>
                 <DropdownSheet
-                    label="Primary Engine"
-                    options={engineOptions}
-                    value={engine}
-                    onSelectionChange={handleEngineChange}
+                    data={engineOptions}
+                    selected={engineOptions.find(opt => opt.value === engine)}
+                    onChangeValue={(option) => handleEngineChange(option.value as GrammarEngineType)}
+                    labelExtractor={(option) => option.label}
+                    placeholder="Select Engine"
+                    modalTitle="Select Primary Engine"
                 />
                 
                 <TText style={{ marginTop: spacing.xs, fontSize: 12, color: color.text._500 }}>
@@ -333,11 +313,14 @@ Auto Select:
             </View>
 
             <View style={styles.section}>
+                <TText style={{ fontSize: 14, fontWeight: '600', marginBottom: spacing.sm }}>Fallback Engine</TText>
                 <DropdownSheet
-                    label="Fallback Engine"
-                    options={engineOptions.filter(opt => opt.value !== 'auto')}
-                    value={fallbackEngine}
-                    onSelectionChange={handleFallbackEngineChange}
+                    data={engineOptions.filter(opt => opt.value !== 'auto')}
+                    selected={engineOptions.find(opt => opt.value === fallbackEngine)}
+                    onChangeValue={(option) => handleFallbackEngineChange(option.value as GrammarEngineType)}
+                    labelExtractor={(option) => option.label}
+                    placeholder="Select Fallback Engine"
+                    modalTitle="Select Fallback Engine"
                 />
                 
                 <TText style={{ marginTop: spacing.xs, fontSize: 12, color: color.text._500 }}>
@@ -347,11 +330,14 @@ Auto Select:
 
             {engine === 'auto' && (
                 <View style={styles.section}>
+                    <TText style={{ fontSize: 14, fontWeight: '600', marginBottom: spacing.sm }}>Preferred Engine (Auto Mode)</TText>
                     <DropdownSheet
-                        label="Preferred Engine (Auto Mode)"
-                        options={engineOptions.filter(opt => opt.value !== 'auto')}
-                        value={preferredEngine}
-                        onSelectionChange={handlePreferredEngineChange}
+                        data={engineOptions.filter(opt => opt.value !== 'auto')}
+                        selected={engineOptions.find(opt => opt.value === preferredEngine)}
+                        onChangeValue={(option) => handlePreferredEngineChange(option.value as GrammarEngineType)}
+                        labelExtractor={(option) => option.label}
+                        placeholder="Select Preferred Engine"
+                        modalTitle="Select Preferred Engine"
                     />
                     
                     <TText style={{ marginTop: spacing.xs, fontSize: 12, color: color.text._500 }}>

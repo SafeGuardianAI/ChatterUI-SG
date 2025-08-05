@@ -87,10 +87,7 @@ const GrammarToggle = () => {
                 if (!hasContent && !cachedGrammarRef.current) {
                     const cached = mmkv.getString(GRAMMAR_CACHE_KEY)
 
-                    if (cached) {
-                        cachedGrammarRef.current = cached
-                        setGrammarContent(cached)
-                    }
+  
                 }
                 
                 setIsEnabled(hasContent)
