@@ -2,34 +2,34 @@ const IS_DEV = process.env.APP_VARIANT === 'development'
 
 module.exports = {
     expo: {
-        name: IS_DEV ? 'ChatterUI (DEV)' : 'ChatterUI',
+        name: IS_DEV ? 'SafeGuardianAI (DEV)' : 'SafeGuardianAI',
         newArchEnabled: true,
-        slug: 'ChatterUI',
-        version: '0.8.7-beta6',
+        slug: 'SafeGuardianAI',
+        version: '0.0.1-beta1',
         orientation: 'default',
-        icon: './assets/images/icon.png',
-        scheme: 'chatterui',
+        icon: './assets/images/logo_small.jpg',
+        scheme: 'safeguardianai',
         userInterfaceStyle: 'automatic',
         assetBundlePatterns: ['**/*'],
         ios: {
             icon: {
-                dark: './assets/images/ios-dark.png',
-                light: './assets/images/ios-light.png',
-                tinted: './assets/images/icon.png',
+                dark: './assets/images/logo_small.jpg',
+                light: './assets/images/logo_small.jpg',
+                tinted: './assets/images/logo_small.jpg',
             },
             supportsTablet: true,
-            package: IS_DEV ? 'com.Vali98.ChatterUIDev' : 'com.Vali98.ChatterUI',
-            bundleIdentifier: IS_DEV ? 'com.Vali98.ChatterUIDev' : 'com.Vali98.ChatterUI',
+            package: IS_DEV ? 'com.SG.SafeGuardianAIDev' : 'com.SG.SafeGuardianAI',
+            bundleIdentifier: IS_DEV ? 'com.SG.SafeGuardianAIDev' : 'com.SG.SafeGuardianAI',
         },
         android: {
             adaptiveIcon: {
-                foregroundImage: './assets/images/adaptive-icon-foreground.png',
-                backgroundImage: './assets/images//adaptive-icon-background.png',
-                monochromeImage: './assets/images/adaptive-icon-foreground.png',
+                foregroundImage: './assets/images/logo_small.jpg',
+                backgroundImage: './assets/images/logo_small.jpg',
+                monochromeImage: './assets/images/logo_small.jpg',
                 backgroundColor: '#000',
             },
             edgeToEdgeEnabled: true,
-            package: IS_DEV ? 'com.Vali98.ChatterUIDev' : 'com.Vali98.ChatterUI',
+            package: IS_DEV ? 'com.SG.SafeGuardianAIDev' : 'com.SG.SafeGuardianAI',
             userInterfaceStyle: 'dark',
             permissions: [
                 'android.permission.FOREGROUND_SERVICE',
@@ -53,7 +53,7 @@ module.exports = {
         web: {
             bundler: 'metro',
             output: 'static',
-            favicon: './assets/images/adaptive-icon.png',
+            favicon: './assets/images/logo_small.jpg',
         },
         plugins: [
             [
@@ -109,9 +109,6 @@ module.exports = {
         extra: {
             router: {
                 origin: false,
-            },
-            eas: {
-                projectId: 'd588a96a-5eb0-457a-85bc-e21acfdc60e9',
             },
         },
     },
